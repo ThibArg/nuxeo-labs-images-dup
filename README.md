@@ -51,6 +51,20 @@ Contribute to the `configuration` extension point of `nuxeo.labs.images.dup.Imag
 
 The first available view is used for hashing. Changing the first view changes the hash signature; run the `computeImageHash` bulk action to update existing documents. `maxCandidates` should not exceed the search index's maximum result window.
 
+### Search Backend
+
+Similar images are found by querying the `imgh:bands` property through the Search service. What you have to set up depends on the backend serving that query:
+
+- **MongoDB repository:** nothing to do. The plugin declares the required index and Nuxeo creates it automatically.
+- **PostgreSQL repository (VCS):** this backend ignores the index declaration. Create the index manually, otherwise every search performs a full scan of the table:
+
+  ```sql
+  CREATE INDEX imgh_bands_item_idx ON imgh_bands (item);
+  ```
+
+  The `imgh_bands` table is created when the server starts with the plugin installed, so run the statement above after the first startup.
+- **OpenSearch or Elasticsearch search client:** nothing to do, the property is mapped automatically. Be aware that band keys are also copied into the fulltext field, so they can show up in fulltext searches.
+
 ## How to Build and Deploy
 
 ### Build and Install Locally

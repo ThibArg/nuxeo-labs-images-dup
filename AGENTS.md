@@ -37,6 +37,39 @@ Run `mvn clean install` before committing Java/XML changes (not needed for READM
 
 Package artifact: `nuxeo-labs-images-dup-package/target/nuxeo-labs-images-dup-package-2025.1.0.zip`.
 
+## Search backend and the `imgh:bands` index
+
+`ImageHashServiceImpl.search()` issues `WHERE imgh:bands IN (...)` through `SearchService`. Whether an
+index is needed, and whether it is created for you, depends on which search client is active.
+
+| Deployment | Query executed by | Index needed | Status |
+|---|---|---|---|
+| `repository` client + MongoDB (LTS 2025 default) | MongoDB `find` | yes | automatic |
+| `repository` client + VCS / PostgreSQL | SQL on a collection table | yes | **not created, manual** |
+| `opensearch` client | OpenSearch only | n/a | auto-mapped |
+
+- **MongoDB: nothing to do.** The `indexOrder="ascending"` declaration in `imagehash-schemas-contrib.xml`
+  is read by `MongoDBIndexCreator`, the only consumer of that attribute in the whole platform. The index
+  is created at repository init because the `imagehash` schema is attached to the `ImageHash` facet.
+- **VCS / PostgreSQL: known limitation, not handled by the plugin.** VCS ignores `indexOrder` entirely.
+  `imgh:bands` becomes the collection table `imgh_bands(id, pos, item)` and VCS only auto-creates
+  `id`-leading indexes (`(id)` and `(id, pos)`), which are useless here, so the band lookup degrades to a
+  sequential scan. Create it by hand:
+
+  ```sql
+  CREATE INDEX imgh_bands_item_idx ON imgh_bands (item);
+  ```
+
+  Beware: VCS emits index DDL **only when a table is created**, so an existing `imgh_bands` is never
+  retro-fitted on restart.
+- **OpenSearch: the repository index is irrelevant** for this query, which is served entirely from
+  `_source` without reading the repository. `imgh:bands` is auto-mapped as `keyword` by the dynamic
+  `strings` template, so no mapping contribution is needed, and 548 terms stays far below
+  `index.max_terms_count` (65536). Side effect to keep in mind: that template carries
+  `copy_to: "all_field"`, so **every band key is copied into the fulltext field** and shows up as noise
+  in `ecm:fulltext`. Fixing it would require an explicit `<mapping append="true"/>` contribution
+  overriding `imgh:bands` without `copy_to`.
+
 ## Testing
 
 - **No external service is needed.** `CoreFeature` defaults to H2 in-memory VCS and `CoreSearchFeature`
@@ -50,10 +83,8 @@ Package artifact: `nuxeo-labs-images-dup-package/target/nuxeo-labs-images-dup-pa
   docker stop nuxeo-test-mongo
   ```
 
-  This is the only way to exercise the `indexOrder="ascending"` declaration on `imgh:bands`
-  (`imagehash-schemas-contrib.xml`): the index is created automatically at repository init because the
-  schema is attached to the `ImageHash` facet. Verified present as `imgh:bands_1` in db `unittests`,
-  collection `test`. On VCS/PostgreSQL the declaration is ignored and the index must be created by hand.
+  This is the only run that exercises the index creation described above. Verified present as
+  `imgh:bands_1` in db `unittests`, collection `test`.
 - `TestImageHashService` deploys only `picture-schemas-contrib.xml` + `picture-adapter-contrib.xml`,
   never the views-generation components, so **ImageMagick is not required**. Picture views are faked by
   writing `picture:views` directly (`createPicture`) and `pictureViewsGenerationDone` is fired by hand
