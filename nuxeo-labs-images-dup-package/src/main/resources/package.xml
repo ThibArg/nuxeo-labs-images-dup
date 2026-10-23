@@ -1,0 +1,22 @@
+<!-- See documentation at http://doc.nuxeo.com/x/HgIz -->
+<package type="addon" name="nuxeo-labs-images-dup" version="@VERSION@">
+  <title>Nuxeo Labs Images Duplicates</title>
+  <description>
+    <p>Detects near-duplicate images (documents with the Picture facet) using a perceptual hash (pHash).
+    Hashes are computed after picture views generation, stored on the document and searched with NXQL,
+    so results always honor permissions. A "duplicatedImage" event is fired when near duplicates are found.</p>
+  </description>
+  <vendor>Hyland</vendor>
+  <installer restart="true" />
+  <uninstaller restart="true" />
+  <nuxeo-validation>none</nuxeo-validation>
+  <production-state>testing</production-state>
+  <supported>false</supported>
+  <target-platform>
+    <name>lts</name>
+    <version>[@NUXEO_TARGET_VERSION@,)</version>
+  </target-platform>
+  <license>Apache License, Version 2.0</license>
+  <license-url>http://www.apache.org/licenses/LICENSE-2.0</license-url>
+  <visibility>DEV</visibility>
+</package>

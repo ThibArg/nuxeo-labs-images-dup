@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.test.capture">
+
+  <extension target="org.nuxeo.ecm.core.event.EventServiceComponent" point="listener">
+    <listener name="duplicatedImageCapture" async="false" postCommit="false"
+      class="nuxeo.labs.images.dup.DuplicatedImageCaptureListener">
+      <event>duplicatedImage</event>
+    </listener>
+  </extension>
+
+</component>

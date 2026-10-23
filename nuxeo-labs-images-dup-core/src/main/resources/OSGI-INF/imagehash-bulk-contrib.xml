@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.bulk">
+
+  <require>org.nuxeo.ecm.core.bulk</require>
+
+  <extension target="org.nuxeo.ecm.core.bulk" point="actions">
+    <action name="computeImageHash" defaultScroller="repository" inputStream="bulk/computeImageHash"
+      bucketSize="100" batchSize="20" httpEnabled="false" />
+  </extension>
+
+  <extension target="org.nuxeo.runtime.stream.service" point="streamProcessor">
+    <streamProcessor name="computeImageHash" class="nuxeo.labs.images.dup.bulk.ComputeImageHashAction"
+      defaultConcurrency="${nuxeo.bulk.action.computeImageHash.defaultConcurrency:=2}"
+      defaultPartitions="${nuxeo.bulk.action.computeImageHash.defaultPartitions:=4}">
+      <policy name="default" maxRetries="${nuxeo.bulk.action.computeImageHash.maxRetries:=1}" delay="1s"
+        maxDelay="10s" continueOnFailure="true" />
+    </streamProcessor>
+  </extension>
+
+</component>

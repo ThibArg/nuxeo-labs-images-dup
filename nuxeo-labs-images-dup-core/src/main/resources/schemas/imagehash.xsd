@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<xs:schema targetNamespace="http://nuxeo.com/schemas/imagehash"
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns:nxs="http://nuxeo.com/schemas/imagehash">
+
+  <!-- 64-bit perceptual hash, 16 hex characters -->
+  <xs:element name="phash" type="xs:string" />
+
+  <!-- Search keys "<signatureId>:<bandIndex>:<16-bit band in hex>", empty for degenerate images -->
+  <xs:element name="bands" type="nxs:stringList" />
+
+  <!-- Algorithm version + source picture view; hashes with different signatures are never compared -->
+  <xs:element name="signature" type="xs:string" />
+
+  <xs:simpleType name="stringList">
+    <xs:list itemType="xs:string" />
+  </xs:simpleType>
+
+</xs:schema>
