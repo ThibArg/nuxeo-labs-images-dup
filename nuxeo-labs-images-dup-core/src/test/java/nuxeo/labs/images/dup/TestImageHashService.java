@@ -65,7 +65,7 @@ import org.nuxeo.ecm.core.bulk.message.BulkStatus;
 import org.nuxeo.ecm.core.event.Event;
 import org.nuxeo.ecm.core.event.EventService;
 import org.nuxeo.ecm.core.event.impl.DocumentEventContext;
-import org.nuxeo.ecm.core.test.CoreSearchFeature;
+import org.nuxeo.ecm.core.search.client.opensearch1.OpenSearchCoreSearchFeature;
 import org.nuxeo.ecm.core.test.annotations.Granularity;
 import org.nuxeo.ecm.core.test.annotations.RepositoryConfig;
 import org.nuxeo.runtime.test.runner.Deploy;
@@ -77,7 +77,8 @@ import nuxeo.labs.images.dup.bulk.ComputeImageHashAction;
 import nuxeo.labs.images.dup.operations.FindSimilarImagesOp;
 
 @RunWith(FeaturesRunner.class)
-@Features({ AutomationFeature.class, CoreSearchFeature.class })
+// the duplicate search requires the OpenSearch client, started here as an embedded node
+@Features({ AutomationFeature.class, OpenSearchCoreSearchFeature.class })
 @RepositoryConfig(cleanup = Granularity.METHOD)
 // Picture doctype, without the views generation (no ImageMagick needed)
 @Deploy("org.nuxeo.ecm.platform.tag:OSGI-INF/faceted-tag-service-core-types.xml")

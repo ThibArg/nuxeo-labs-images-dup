@@ -99,6 +99,19 @@
       <artifactId>nuxeo-platform-tag</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- Duplicate search requires the OpenSearch search client: tests run it with an embedded node -->
+    <dependency>
+      <groupId>org.nuxeo.ecm.core</groupId>
+      <artifactId>nuxeo-search-client-opensearch1</artifactId>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.nuxeo.runtime</groupId>
+      <artifactId>nuxeo-runtime-opensearch1-embed</artifactId>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
