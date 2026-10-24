@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.test.opensearch.mapping">
+
+  <!-- Must be merged after the base mapping, otherwise the append is dropped -->
+  <require>org.nuxeo.ecm.core.search.opensearch1.test</require>
+
+  <!-- Test counterpart of the marketplace template, on the test technical index -->
+  <extension target="org.nuxeo.runtime.opensearch1.OpenSearchComponent" point="index">
+    <index name="nxutest">
+      <mapping append="true">
+        {
+          "properties": {
+            "imgh:bands": {
+              "type": "keyword",
+              "ignore_above": 32
+            }
+          }
+        }
+      </mapping>
+    </index>
+  </extension>
+
+</component>

@@ -65,6 +65,9 @@ import org.nuxeo.ecm.core.bulk.message.BulkStatus;
 import org.nuxeo.ecm.core.event.Event;
 import org.nuxeo.ecm.core.event.EventService;
 import org.nuxeo.ecm.core.event.impl.DocumentEventContext;
+import org.nuxeo.ecm.core.query.sql.NXQL;
+import org.nuxeo.ecm.core.search.SearchQuery;
+import org.nuxeo.ecm.core.search.SearchService;
 import org.nuxeo.ecm.core.search.client.opensearch1.OpenSearchCoreSearchFeature;
 import org.nuxeo.ecm.core.test.annotations.Granularity;
 import org.nuxeo.ecm.core.test.annotations.RepositoryConfig;
@@ -85,6 +88,7 @@ import nuxeo.labs.images.dup.operations.FindSimilarImagesOp;
 @Deploy("org.nuxeo.ecm.platform.picture.core:OSGI-INF/picture-schemas-contrib.xml")
 @Deploy("org.nuxeo.ecm.platform.picture.core:OSGI-INF/picture-adapter-contrib.xml")
 @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core")
+@Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-opensearch-mapping-contrib.xml")
 @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-capture-listener-contrib.xml")
 public class TestImageHashService {
 
@@ -104,6 +108,9 @@ public class TestImageHashService {
 
     @Inject
     protected BulkService bulkService;
+
+    @Inject
+    protected SearchService searchService;
 
     @Inject
     protected TransactionalFeature txFeature;
@@ -225,6 +232,26 @@ public class TestImageHashService {
         assertTrue(session.getDocument(resized.getRef()).hasFacet(IMAGE_HASH_FACET));
         assertTrue(DuplicatedImageCaptureListener.getEvents().isEmpty());
         assertEquals(Set.of(resized.getId()), ids(service.findSimilar(first, session.getPrincipal(), null, null, null)));
+    }
+
+    @Test
+    public void testBandKeysAreNotIndexedInFulltext() {
+        var doc = createPicture("/", "original", original);
+        viewsGenerated(doc);
+
+        doc = session.getDocument(doc.getRef());
+        var bands = (Object[]) doc.getPropertyValue(BANDS_PROPERTY);
+        assertEquals(HashBands.BAND_COUNT, bands.length);
+
+        // the band keys are opaque search keys, they must not leak into fulltext search
+        for (var band : bands) {
+            var nxql = "SELECT * FROM Document WHERE ecm:fulltext = " + NXQL.escapeString((String) band);
+            var query = SearchQuery.builder(nxql, session.getPrincipal())
+                                   .index(searchService.getDefaultIndexName(session.getRepositoryName()))
+                                   .limit(10)
+                                   .build();
+            assertEquals("band key found in fulltext: " + band, 0, searchService.search(query).getHitsCount());
+        }
     }
 
     protected DocumentModel createFolder(String name, boolean readableByJohn) {
