@@ -5,8 +5,6 @@
 
   <extension target="org.nuxeo.ecm.core.schema.TypeService" point="schema">
     <schema name="imagehash" prefix="imgh" src="schemas/imagehash.xsd" />
-    <!-- Creates the index on MongoDB. Ignored by VCS (PostgreSQL...), where the index must be created manually -->
-    <property schema="imagehash" name="bands" indexOrder="ascending" />
   </extension>
 
   <extension target="org.nuxeo.ecm.core.schema.TypeService" point="doctype">

@@ -48,12 +48,14 @@ import org.nuxeo.common.Environment;
 import org.nuxeo.ecm.core.api.Blob;
 import org.nuxeo.ecm.core.api.CoreSession;
 import org.nuxeo.ecm.core.api.DocumentModel;
+import org.nuxeo.ecm.core.api.NuxeoException;
 import org.nuxeo.ecm.core.api.NuxeoPrincipal;
 import org.nuxeo.ecm.core.api.VersioningOption;
 import org.nuxeo.ecm.core.api.versioning.VersioningService;
 import org.nuxeo.ecm.core.event.EventService;
 import org.nuxeo.ecm.core.event.impl.DocumentEventContext;
 import org.nuxeo.ecm.core.query.sql.NXQL;
+import org.nuxeo.ecm.core.search.SearchIndex;
 import org.nuxeo.ecm.core.search.SearchQuery;
 import org.nuxeo.ecm.core.search.SearchService;
 import org.nuxeo.ecm.platform.dublincore.listener.DublinCoreListener;
@@ -86,12 +88,25 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
     /** Images are subsampled when read, down to about this size on their smaller side. */
     protected static final int READ_SIZE = 256;
 
+    /**
+     * Prefix of the search client names able to run the band query. Covers the blue/green deployment client
+     * {@code opensearch-green}.
+     */
+    protected static final String OPENSEARCH_CLIENT_PREFIX = "opensearch";
+
+    protected static final String NO_OPENSEARCH_MESSAGE = "No OpenSearch search index found for repository: %s."
+            + " This plugin requires the nuxeo-search-client-opensearch1 package, with"
+            + " nuxeo.search.client.default.name=opensearch";
+
     protected ImageHashConfigurationDescriptor config;
 
     protected String signature;
 
     /** Short id of the signature, prefixing the band keys. */
     protected String bandPrefix;
+
+    /** Logged only once, the listener would otherwise report it for every picture. */
+    protected volatile boolean missingOpenSearchLogged;
 
     protected record Computed(long hash, double[][] reduced, boolean degenerate) {
     }
@@ -144,7 +159,17 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
         if (computed == null || !store(session, doc, computed) || computed.degenerate()) {
             return;
         }
-        var duplicates = search(doc, principal, computed, config.isDetectionOrientations(),
+        // the hash is stored even without OpenSearch, only the detection is skipped
+        var index = findSearchIndex(doc.getRepositoryName());
+        if (index == null) {
+            if (!missingOpenSearchLogged) {
+                missingOpenSearchLogged = true;
+                log.error(NO_OPENSEARCH_MESSAGE.formatted(doc.getRepositoryName())
+                        + ". Hashes are still stored, duplicate detection is disabled");
+            }
+            return;
+        }
+        var duplicates = search(doc, principal, computed, index, config.isDetectionOrientations(),
                 config.getDetectionRadius(), config.getThreshold());
         if (!duplicates.isEmpty()) {
             fireDuplicatedImage(session, doc, principal, duplicates);
@@ -161,9 +186,39 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
         if (computed == null || computed.degenerate()) {
             return List.of();
         }
-        return search(doc, principal, computed, requireNonNullElse(orientations, config.isSearchOrientations()),
+        return search(doc, principal, computed, requireSearchIndex(doc.getRepositoryName()),
+                requireNonNullElse(orientations, config.isSearchOrientations()),
                 requireNonNullElse(radius, config.getSearchRadius()),
                 requireNonNullElse(threshold, config.getThreshold()));
+    }
+
+    /**
+     * Returns the first search index of the repository served by an OpenSearch client, or {@code null}.
+     * <p>
+     * The index name is deployment specific, so the client name is what identifies it.
+     */
+    @Nullable
+    protected SearchIndex findSearchIndex(String repository) {
+        var searchService = Framework.getService(SearchService.class);
+        return searchService.getIndexNames(repository)
+                            .stream()
+                            .map(searchService::getSearchIndex)
+                            .filter(index -> index.client().startsWith(OPENSEARCH_CLIENT_PREFIX))
+                            .findFirst()
+                            .orElse(null);
+    }
+
+    /**
+     * Same as {@link #findSearchIndex(String)}, but fails instead of returning {@code null}.
+     *
+     * @throws NuxeoException if the OpenSearch search client is not deployed
+     */
+    protected SearchIndex requireSearchIndex(String repository) {
+        var index = findSearchIndex(repository);
+        if (index == null) {
+            throw new NuxeoException(NO_OPENSEARCH_MESSAGE.formatted(repository));
+        }
+        return index;
     }
 
     @Nullable
@@ -255,7 +310,7 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
     }
 
     protected List<SimilarImage> search(DocumentModel doc, NuxeoPrincipal principal, Computed computed,
-            boolean orientations, int radius, int threshold) {
+            SearchIndex index, boolean orientations, int radius, int threshold) {
         var hashes = orientations ? PHash.orientationHashes(computed.reduced()) : new long[] { computed.hash() };
         var keys = new LinkedHashSet<String>();
         for (var hash : hashes) {
@@ -267,13 +322,9 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
                 """.formatted(ECM_UUID, PHASH_PROPERTY, BANDS_PROPERTY,
                 keys.stream().map(NXQL::escapeString).collect(joining(",")), ECM_UUID, NXQL.escapeString(doc.getId()));
 
-        var searchService = Framework.getService(SearchService.class);
         var maxCandidates = config.getMaxCandidates();
-        var query = SearchQuery.builder(nxql, principal)
-                               .index(searchService.getDefaultIndexName(doc.getRepositoryName()))
-                               .limit(maxCandidates)
-                               .build();
-        var response = searchService.search(query);
+        var query = SearchQuery.builder(nxql, principal).searchIndex(index).limit(maxCandidates).build();
+        var response = Framework.getService(SearchService.class).search(query);
         if (response.getHitsCount() >= maxCandidates) {
             log.warn("Document: {} reached the max number of candidates: {}, some duplicates may be missed",
                     doc.getId(), maxCandidates);
