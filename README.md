@@ -9,6 +9,8 @@
 
 Nuxeo LTS 2025 plugin for detecting near-duplicate images on documents with the Picture facet. It computes and stores a perceptual hash when picture views are generated, then searches for similar images while respecting the current user's permissions.
 
+The duplicate search runs on the OpenSearch (or Elasticsearch) search client, see [Search Backend](#search-backend).
+
 ## How to Use
 
 Install the Marketplace package. New or updated Picture documents are hashed automatically after their picture views are generated. When a duplicate is detected, the plugin fires the `duplicatedImage` event.
@@ -49,21 +51,55 @@ Contribute to the `configuration` extension point of `nuxeo.labs.images.dup.Imag
 </component>
 ```
 
-The first available view is used for hashing. Changing the first view changes the hash signature; run the `computeImageHash` bulk action to update existing documents. `maxCandidates` should not exceed the search index's maximum result window.
+The first available view is used for hashing. Changing the first view changes the hash signature; run the `computeImageHash` bulk action to update existing documents.
 
 ### Search Backend
 
-Similar images are found by querying the `imgh:bands` property through the Search service. What you have to set up depends on the backend serving that query:
+Similar images are found by querying the `imgh:bands` property through the Search service, and this plugin **requires the OpenSearch search client**. The Marketplace package depends on `nuxeo-search-client-opensearch1`, so installing it pulls that package in. Elasticsearch deployments served by the same client work identically.
 
-- **MongoDB repository:** nothing to do. The plugin declares the required index and Nuxeo creates it automatically.
-- **PostgreSQL repository (VCS):** this backend ignores the index declaration. Create the index manually, otherwise every search performs a full scan of the table:
+The query always targets an OpenSearch-backed index, never the repository, so no MongoDB or PostgreSQL index is needed. Without that client, hashes are still computed and stored, but duplicate detection is disabled and `ImageHash.FindSimilar` fails with an explicit error.
 
-  ```sql
-  CREATE INDEX imgh_bands_item_idx ON imgh_bands (item);
-  ```
+`maxCandidates` must stay below the index `max_result_window`, which defaults to 10000. The plugin default is exactly 10000, so lower it if you lower the window.
 
-  The `imgh_bands` table is created when the server starts with the plugin installed, so run the statement above after the first startup.
-- **OpenSearch or Elasticsearch search client:** nothing to do, the property is mapped automatically. Be aware that band keys are also copied into the fulltext field, so they can show up in fulltext searches.
+### Keeping Band Keys Out of Fulltext
+
+Band keys are opaque strings such as `f2eabf4f:0:cb94`. Two different fulltext indexes can pick them up, and they are independent of each other.
+
+**OpenSearch fulltext is handled for you.** The Marketplace package installs a template that maps `imgh:bands` explicitly, which overrides the default dynamic mapping and removes the `copy_to` into the fulltext field. The mapping is applied when the index is created, so on an existing deployment you must drop the index and reindex for it to take effect.
+
+**Repository fulltext is not handled, and you should configure it.** By default Nuxeo puts every string property of every schema into `ecm:fulltextSimple`, including `imgh:bands`. Besides adding noise, it means each stored hash marks the document dirty for fulltext and schedules an extra extraction job per picture. Contribute the exclusion matching your repository:
+
+```xml
+<!-- MongoDB -->
+<extension target="org.nuxeo.ecm.core.storage.mongodb.MongoDBRepositoryService" point="repository">
+  <repository name="default">
+    <fulltext>
+      <index>
+        <excludeField>imgh:bands</excludeField>
+        <excludeField>imgh:bands/*</excludeField>
+      </index>
+    </fulltext>
+  </repository>
+</extension>
+```
+
+```xml
+<!-- PostgreSQL (VCS) -->
+<extension target="org.nuxeo.ecm.core.storage.sql.RepositoryService" point="repository">
+  <repository name="default">
+    <indexing>
+      <fulltext>
+        <index name="default">
+          <excludeField>imgh:bands</excludeField>
+          <excludeField>imgh:bands/*</excludeField>
+        </index>
+      </fulltext>
+    </indexing>
+  </repository>
+</extension>
+```
+
+Both forms are needed: `imgh:bands` suppresses the text extraction, `imgh:bands/*` suppresses the dirty-path trigger that schedules the job. Match the repository name to your own, and keep the `<index>` name as shown: it has to match the one declared by the Nuxeo template, otherwise the contribution adds a second index instead of merging into the existing one.
 
 ## How to Build and Deploy
 

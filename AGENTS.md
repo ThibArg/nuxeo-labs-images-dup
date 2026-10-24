@@ -37,54 +37,73 @@ Run `mvn clean install` before committing Java/XML changes (not needed for READM
 
 Package artifact: `nuxeo-labs-images-dup-package/target/nuxeo-labs-images-dup-package-2025.1.0.zip`.
 
-## Search backend and the `imgh:bands` index
+## Search backend: OpenSearch is required
 
-`ImageHashServiceImpl.search()` issues `WHERE imgh:bands IN (...)` through `SearchService`. Whether an
-index is needed, and whether it is created for you, depends on which search client is active.
+`ImageHashServiceImpl.search()` issues `WHERE imgh:bands IN (...)` through `SearchService` and **always
+targets an OpenSearch-backed index**. No repository-level index is involved, so there is nothing to
+create on MongoDB or PostgreSQL. Do not reintroduce `indexOrder="ascending"` on `imgh:bands`; it was
+removed on purpose, only `MongoDBIndexCreator` ever read it.
 
-| Deployment | Query executed by | Index needed | Status |
-|---|---|---|---|
-| `repository` client + MongoDB (LTS 2025 default) | MongoDB `find` | yes | automatic |
-| `repository` client + VCS / PostgreSQL | SQL on a collection table | yes | **not created, manual** |
-| `opensearch` client | OpenSearch only | n/a | auto-mapped |
+- **Resolve by client name, never by index name.** `findSearchIndex()` filters
+  `getIndexNames(repo) -> getSearchIndex(name)` on `client().startsWith("opensearch")`. The index name
+  (`enhanced`) comes from a freemarker template a customer can override, and `getSearchIndex(unknown)`
+  throws a bare NPE. The client name is declared in the opensearch bundle itself, so it is stable. The
+  prefix match also covers the blue/green `opensearch-green` client. Same approach as the platform's own
+  `RequestValidator` and `SearchServicePageProvider`.
+- **Failure modes differ by caller on purpose.** `findSimilar()` throws `NuxeoException`; the async
+  `ImageHashListener` path still stores the hash and only skips detection, logging once via
+  `missingOpenSearchLogged` because it would otherwise log one error per picture.
+- Neither `org.nuxeo.runtime.opensearch1` nor `org.nuxeo.ecm.core.search.client.opensearch1` ships in
+  `nuxeo-nxr-server`; both come from the `nuxeo-search-client-opensearch1` addon, which `package.xml`
+  now declares in `<dependencies>`.
+- `maxCandidates` default (10000) sits exactly on the OpenSearch `max_result_window` default.
 
-- **MongoDB: nothing to do.** The `indexOrder="ascending"` declaration in `imagehash-schemas-contrib.xml`
-  is read by `MongoDBIndexCreator`, the only consumer of that attribute in the whole platform. The index
-  is created at repository init because the `imagehash` schema is attached to the `ImageHash` facet.
-- **VCS / PostgreSQL: known limitation, not handled by the plugin.** VCS ignores `indexOrder` entirely.
-  `imgh:bands` becomes the collection table `imgh_bands(id, pos, item)` and VCS only auto-creates
-  `id`-leading indexes (`(id)` and `(id, pos)`), which are useless here, so the band lookup degrades to a
-  sequential scan. Create it by hand:
+## Fulltext: two independent layers, only one is fixed here
 
-  ```sql
-  CREATE INDEX imgh_bands_item_idx ON imgh_bands (item);
-  ```
+Band keys are opaque strings (`f2eabf4f:0:cb94`). They can leak into **two unrelated** fulltext indexes.
+Fixing one does nothing for the other: `ecm:fulltextSimple` is never shipped to OpenSearch
+(`DefaultIndexingJsonWriter.writeSystemProperties` emits only `binarytext`).
 
-  Beware: VCS emits index DDL **only when a table is created**, so an existing `imgh_bands` is never
-  retro-fitted on restart.
-- **OpenSearch: the repository index is irrelevant** for this query, which is served entirely from
-  `_source` without reading the repository. `imgh:bands` is auto-mapped as `keyword` by the dynamic
-  `strings` template, so no mapping contribution is needed, and 548 terms stays far below
-  `index.max_terms_count` (65536). Side effect to keep in mind: that template carries
-  `copy_to: "all_field"`, so **every band key is copied into the fulltext field** and shows up as noise
-  in `ecm:fulltext`. Fixing it would require an explicit `<mapping append="true"/>` contribution
-  overriding `imgh:bands` without `copy_to`.
+| Layer | Cause | Status |
+|---|---|---|
+| OpenSearch `all_field` | `copy_to` on the dynamic `strings` template | **fixed**, mapping override |
+| Repository `ecm:fulltextSimple` | Nuxeo indexes every string property of every schema | **not fixed**, documented in README |
+
+- **The OpenSearch fix is ordering sensitive.** `OpenSearchIndexConfig.merge()` preserves the base
+  mapping only when the *incoming* descriptor has `append="true"`; in the other direction
+  `extraMappingContents` is silently dropped. Both the marketplace template and
+  `test-opensearch-mapping-contrib.xml` therefore declare `<require>` on the component holding the base
+  mapping. Remove that `<require>` and the override vanishes without any error.
+- The production mapping ships as a **marketplace template**
+  (`nuxeo-labs-images-dup-package/src/main/resources/install/templates/`), not in the bundle, so the
+  plugin does not report a missing extension target when OpenSearch is absent. The test uses a separate
+  contribution because the technical index is `nxutest` in tests and
+  `${nuxeo.search.client.default.opensearch1.index.name}` (default `nuxeo`) in production.
+- Mappings are applied **only at index creation** (`OpenSearchComponent` guards on `!mappingExists`).
+  Existing deployments need a drop + reindex.
+- **Repository fulltext is still polluted.** Beyond noise, writing `imgh:bands` marks the path dirty and
+  schedules an extra `FulltextExtractorWork` per hash store. `store()` disables versioning, DC, audit and
+  notifications but cannot disable this. The `<excludeField>` cure is deployment-specific (different
+  nesting for DBS vs VCS, `<index>` name must match the shipped template) so it is documented in the
+  README rather than shipped.
 
 ## Testing
 
-- **No external service is needed.** `CoreFeature` defaults to H2 in-memory VCS and `CoreSearchFeature`
-  defaults to `nuxeo.test.search=repository`, so the NXQL search in `ImageHashServiceImpl.search()` runs
-  against the repository backend. Plain `mvn test` works offline.
-- **MongoDB run** (verified): Nuxeo has no embedded/testcontainers MongoDB, you must supply one.
-
-  ```bash
-  docker run -d --rm --name nuxeo-test-mongo -p 27017:27017 mongo:8
-  mvn -pl nuxeo-labs-images-dup-core test -Dnuxeo.test.core=mongodb
-  docker stop nuxeo-test-mongo
-  ```
-
-  This is the only run that exercises the index creation described above. Verified present as
-  `imgh:bands_1` in db `unittests`, collection `test`.
+- **Still no external service, but no longer in-memory either.** `TestImageHashService` uses
+  `OpenSearchCoreSearchFeature`, and `OpenSearchFeature` starts an **embedded in-JVM OpenSearch node**
+  when `nuxeo.test.opensearch1.servers` is unset. Plain `mvn test` works offline, no Docker. It costs
+  ~10 s of node startup, the class went from ~7 s to ~18 s. The repository stays H2 in-memory VCS.
+  Point the suite at a real cluster with `-Dnuxeo.test.opensearch1.servers=http://localhost:9200`.
+- Required test-jars, both version-managed by the Nuxeo parent:
+  `org.nuxeo.ecm.core:nuxeo-search-client-opensearch1` and
+  `org.nuxeo.runtime:nuxeo-runtime-opensearch1-embed`.
+- The technical index is `nxutest` in tests, hence the separate
+  `test-opensearch-mapping-contrib.xml`, which must be `@Deploy`ed explicitly.
+- `testBandKeysAreNotIndexedInFulltext` is the regression test for the mapping override. It **did fail**
+  before the fix, so if it ever passes trivially, check that the mapping is still being applied.
+- To run against MongoDB instead of H2 (nothing in the plugin depends on it any more, the band query
+  never reaches the repository): `docker run -d --rm -p 27017:27017 mongo:8` then
+  `mvn -pl nuxeo-labs-images-dup-core test -Dnuxeo.test.core=mongodb`.
 - `TestImageHashService` deploys only `picture-schemas-contrib.xml` + `picture-adapter-contrib.xml`,
   never the views-generation components, so **ImageMagick is not required**. Picture views are faked by
   writing `picture:views` directly (`createPicture`) and `pictureViewsGenerationDone` is fired by hand
