@@ -119,6 +119,14 @@ Fixing one does nothing for the other: `ecm:fulltextSimple` is never shipped to 
   opensearch2 and elasticsearch9 blocks are built from verified source metadata but **not automatically
   tested**: the two clients are private SNAPSHOT artifacts, their OpenSearch jars conflict with
   opensearch1 on the classpath, and elasticsearch9 ships no embedded server.
+- **Do not re-propose testing them without a reason to change that trade-off.** The design was worked
+  out and rejected on purpose: property-activated Maven profiles (`-Dsearch=opensearch2`) swapping the
+  test-jars and the test mapping contribution, with `nuxeo.test.search.feature` carrying the feature
+  FQCN as a *string* so a single test class serves every stack with no compile-time dependency
+  (`DynamicFeaturesLoader.loadFeature(String)`, `@since 2025.4`). It works, but it makes
+  `mvn clean install` depend on `packages.nuxeo.com/maven-private` and, for elasticsearch9, on a Docker
+  container — unacceptable for a repository meant to be public. A `RunnerFeature` cannot soften this:
+  Maven resolves dependencies before any test code runs. The README states the support level instead.
 - **Repository fulltext is still polluted.** Beyond noise, writing `imgh:bands` marks the path dirty and
   schedules an extra `FulltextExtractorWork` per hash store. `store()` disables versioning, DC, audit and
   notifications but cannot disable this. The `<excludeField>` cure is deployment-specific (different

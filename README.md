@@ -57,13 +57,22 @@ The first available view is used for hashing. Changing the first view changes th
 
 Similar images are found by querying the `imgh:bands` property through the Search service. This requires a **search engine** search client: the `repository` client, which queries the repository directly, cannot serve it. Install one of:
 
-| Search stack | Package |
-|---|---|
-| OpenSearch 1.x, Elasticsearch 7.x–8.x | `nuxeo-search-client-opensearch1` |
-| OpenSearch 2.x | `nuxeo-search-client-opensearch2` |
-| Elasticsearch 9.x | `nuxeo-search-client-elasticsearch9` |
+| Search stack | Package | Status |
+|---|---|---|
+| OpenSearch 1.x, Elasticsearch 7.x–8.x | `nuxeo-search-client-opensearch1` | Supported, covered by automated tests |
+| OpenSearch 2.x | `nuxeo-search-client-opensearch2` | Supported, **not covered by automated tests** |
+| Elasticsearch 9.x | `nuxeo-search-client-elasticsearch9` | Supported, **not covered by automated tests** |
 
 `nuxeo-search-client-opensearch1` and `nuxeo-search-client-opensearch2` are mutually exclusive. MongoDB Atlas Search (`nuxeo-search-client-mongoatlas`) is **not supported**: it has not been tested and its indexing model differs.
+
+> [!IMPORTANT]
+> Only OpenSearch 1.x, and therefore Elasticsearch 7.x–8.x which uses the same client, is exercised by the test suite. It runs against an embedded OpenSearch node.
+>
+> OpenSearch 2.x and Elasticsearch 9.x are supported by design: the plugin resolves the search index from the configuration rather than from a client name, and the fulltext mapping template ships a dedicated block for each stack, written from the official sources of each client. But no automated test runs against them, so validate on a staging environment before relying on them in production.
+>
+> This is a deliberate trade-off. Those two search clients are distributed as private artifacts, and Elasticsearch 9 has no embeddable server. Testing them would make `mvn clean install` require both credentials and a Docker container, instead of working out of the box for everyone.
+
+To check a deployment manually, index a picture, then run a fulltext search on one of the values of its `imgh:bands` property, for example `f2eabf4f:0:cb94`. It must return no result: if the picture comes back, the mapping template was not applied and band keys are polluting the fulltext index. This is exactly what the automated test asserts on OpenSearch 1.x.
 
 The query always targets the search index, never the repository, so no MongoDB or PostgreSQL index is needed. Without a search engine client, hashes are still computed and stored, but duplicate detection is disabled and `ImageHash.FindSimilar` fails with an explicit error.
 
