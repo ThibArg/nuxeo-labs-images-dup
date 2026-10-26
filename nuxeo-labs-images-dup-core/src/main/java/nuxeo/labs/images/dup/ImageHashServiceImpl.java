@@ -89,14 +89,15 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
     protected static final int READ_SIZE = 256;
 
     /**
-     * Prefix of the search client names able to run the band query. Covers the blue/green deployment client
-     * {@code opensearch-green}.
+     * Name of the search client querying the repository itself, declared by the {@code nuxeo-core-search} bundle. It
+     * is the only client that cannot serve the band query; every other one is a search engine.
      */
-    protected static final String OPENSEARCH_CLIENT_PREFIX = "opensearch";
+    protected static final String REPOSITORY_CLIENT = "repository";
 
-    protected static final String NO_OPENSEARCH_MESSAGE = "No OpenSearch search index found for repository: %s."
-            + " This plugin requires the nuxeo-search-client-opensearch1 package, with"
-            + " nuxeo.search.client.default.name=opensearch";
+    protected static final String NO_SEARCH_ENGINE_MESSAGE = "The default search index of repository: %s is served by"
+            + " the '" + REPOSITORY_CLIENT + "' client, which cannot run the image band query. This plugin requires a"
+            + " search engine: install nuxeo-search-client-opensearch1, nuxeo-search-client-opensearch2 or"
+            + " nuxeo-search-client-elasticsearch9";
 
     protected ImageHashConfigurationDescriptor config;
 
@@ -106,7 +107,7 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
     protected String bandPrefix;
 
     /** Logged only once, the listener would otherwise report it for every picture. */
-    protected volatile boolean missingOpenSearchLogged;
+    protected volatile boolean missingSearchEngineLogged;
 
     protected record Computed(long hash, double[][] reduced, boolean degenerate) {
     }
@@ -159,12 +160,12 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
         if (computed == null || !store(session, doc, computed) || computed.degenerate()) {
             return;
         }
-        // the hash is stored even without OpenSearch, only the detection is skipped
+        // the hash is stored even without a search engine, only the detection is skipped
         var index = findSearchIndex(doc.getRepositoryName());
         if (index == null) {
-            if (!missingOpenSearchLogged) {
-                missingOpenSearchLogged = true;
-                log.error(NO_OPENSEARCH_MESSAGE.formatted(doc.getRepositoryName())
+            if (!missingSearchEngineLogged) {
+                missingSearchEngineLogged = true;
+                log.error(NO_SEARCH_ENGINE_MESSAGE.formatted(doc.getRepositoryName())
                         + ". Hashes are still stored, duplicate detection is disabled");
             }
             return;
@@ -193,30 +194,33 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
     }
 
     /**
-     * Returns the first search index of the repository served by an OpenSearch client, or {@code null}.
+     * Returns the default search index of the repository, or {@code null} when it is served by the repository client,
+     * which cannot run the band query.
      * <p>
-     * The index name is deployment specific, so the client name is what identifies it.
+     * The configured default is resolved rather than looking up an engine index by name, because client names are
+     * stack specific ({@code opensearch} for OpenSearch 1 and 2, {@code elasticsearch} for Elasticsearch 9) and
+     * because a blue/green reindex registers several engine indexes at once, only one of which is the one to query.
      */
     @Nullable
     protected SearchIndex findSearchIndex(String repository) {
         var searchService = Framework.getService(SearchService.class);
-        return searchService.getIndexNames(repository)
-                            .stream()
-                            .map(searchService::getSearchIndex)
-                            .filter(index -> index.client().startsWith(OPENSEARCH_CLIENT_PREFIX))
-                            .findFirst()
-                            .orElse(null);
+        var indexName = searchService.getDefaultIndexName(repository);
+        if (indexName == null) {
+            return null;
+        }
+        var index = searchService.getSearchIndex(indexName);
+        return REPOSITORY_CLIENT.equals(index.client()) ? null : index;
     }
 
     /**
      * Same as {@link #findSearchIndex(String)}, but fails instead of returning {@code null}.
      *
-     * @throws NuxeoException if the OpenSearch search client is not deployed
+     * @throws NuxeoException if no search engine serves the repository
      */
     protected SearchIndex requireSearchIndex(String repository) {
         var index = findSearchIndex(repository);
         if (index == null) {
-            throw new NuxeoException(NO_OPENSEARCH_MESSAGE.formatted(repository));
+            throw new NuxeoException(NO_SEARCH_ENGINE_MESSAGE.formatted(repository));
         }
         return index;
     }

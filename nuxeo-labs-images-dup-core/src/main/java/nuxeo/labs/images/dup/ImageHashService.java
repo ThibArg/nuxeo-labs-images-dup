@@ -97,8 +97,8 @@ public interface ImageHashService {
      * Computes the hash of the document and, if it changed, saves it and fires {@link #DUPLICATED_IMAGE_EVENT} when
      * near duplicates readable by the principal are found.
      * <p>
-     * Duplicate detection requires the OpenSearch search client. When it is not deployed the hash is still stored and
-     * the detection is skipped.
+     * Duplicate detection requires a search engine client (OpenSearch or Elasticsearch). When the repository client
+     * is the one configured, the hash is still stored and the detection is skipped.
      *
      * @since 2025.1.0
      */
@@ -111,7 +111,7 @@ public interface ImageHashService {
      * @param threshold max Hamming distance, out of 64 bits
      * @param radius 0 to 2, see {@link HashBands}
      * @param orientations also find rotated and mirrored images
-     * @throws org.nuxeo.ecm.core.api.NuxeoException if no OpenSearch search index is available, see
+     * @throws org.nuxeo.ecm.core.api.NuxeoException if no search engine serves the repository, see
      *             {@link #updateHashAndDetectDuplicates}
      * @since 2025.1.0
      */
