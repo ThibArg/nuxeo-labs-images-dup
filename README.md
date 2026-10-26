@@ -9,7 +9,7 @@
 
 Nuxeo LTS 2025 plugin for detecting near-duplicate images on documents with the Picture facet. It computes and stores a perceptual hash when picture views are generated, then searches for similar images while respecting the current user's permissions.
 
-The duplicate search runs on the OpenSearch (or Elasticsearch) search client, see [Search Backend](#search-backend).
+The duplicate search runs on a search engine client (OpenSearch or Elasticsearch), see [Search Backend](#search-backend).
 
 ## How to Use
 
@@ -55,9 +55,19 @@ The first available view is used for hashing. Changing the first view changes th
 
 ### Search Backend
 
-Similar images are found by querying the `imgh:bands` property through the Search service, and this plugin **requires the OpenSearch search client**. The Marketplace package depends on `nuxeo-search-client-opensearch1`, so installing it pulls that package in. Elasticsearch deployments served by the same client work identically.
+Similar images are found by querying the `imgh:bands` property through the Search service. This requires a **search engine** search client: the `repository` client, which queries the repository directly, cannot serve it. Install one of:
 
-The query always targets an OpenSearch-backed index, never the repository, so no MongoDB or PostgreSQL index is needed. Without that client, hashes are still computed and stored, but duplicate detection is disabled and `ImageHash.FindSimilar` fails with an explicit error.
+| Search stack | Package | Plugin template to activate |
+|---|---|---|
+| OpenSearch 1.x, Elasticsearch 7.x–8.x | `nuxeo-search-client-opensearch1` | `nuxeo-labs-images-dup-opensearch1` |
+| OpenSearch 2.x | `nuxeo-search-client-opensearch2` | `nuxeo-labs-images-dup-opensearch2` |
+| Elasticsearch 9.x | `nuxeo-search-client-elasticsearch9` | `nuxeo-labs-images-dup-elasticsearch9` |
+
+`nuxeo-search-client-opensearch1` and `nuxeo-search-client-opensearch2` are mutually exclusive. MongoDB Atlas Search (`nuxeo-search-client-mongoatlas`) is **not supported**: it has not been tested and its indexing model differs.
+
+The query always targets the search index, never the repository, so no MongoDB or PostgreSQL index is needed. Without a search engine client, hashes are still computed and stored, but duplicate detection is disabled and `ImageHash.FindSimilar` fails with an explicit error.
+
+The index actually queried is the one declared as default for the repository, so a blue/green reindex keeps working: the plugin follows the blue index until you swap.
 
 `maxCandidates` must stay below the index `max_result_window`, which defaults to 10000. The plugin default is exactly 10000, so lower it if you lower the window.
 
@@ -65,7 +75,13 @@ The query always targets an OpenSearch-backed index, never the repository, so no
 
 Band keys are opaque strings such as `f2eabf4f:0:cb94`. Two different fulltext indexes can pick them up, and they are independent of each other.
 
-**OpenSearch fulltext is handled for you.** The Marketplace package installs a template that maps `imgh:bands` explicitly, which overrides the default dynamic mapping and removes the `copy_to` into the fulltext field. The mapping is applied when the index is created, so on an existing deployment you must drop the index and reindex for it to take effect.
+**Search engine fulltext: activate the template matching your stack.** The package installs the three templates but activates none, because the right one depends on your search client. Add it in `nuxeo.conf`:
+
+```
+nuxeo.append.templates.imagesdup=nuxeo-labs-images-dup-opensearch1
+```
+
+The template maps `imgh:bands` explicitly, which overrides the default dynamic mapping and removes the `copy_to` into the fulltext field. It also covers the green index of a blue/green reindex. The mapping is applied when an index is created, so on an existing deployment you must drop the index and reindex for it to take effect.
 
 **Repository fulltext is not handled, and you should configure it.** By default Nuxeo puts every string property of every schema into `ecm:fulltextSimple`, including `imgh:bands`. Besides adding noise, it means each stored hash marks the document dirty for fulltext and schedules an extra extraction job per picture. Contribute the exclusion matching your repository:
 
