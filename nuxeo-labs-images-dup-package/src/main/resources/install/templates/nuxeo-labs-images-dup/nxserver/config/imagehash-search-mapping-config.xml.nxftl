@@ -1,0 +1,140 @@
+<#escape x as x?xml>
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.search.mapping">
+
+  <!--
+    imgh:bands holds opaque search keys. The default dynamic mapping indexes every string with
+    copy_to="all_field", which pushes them into the fulltext field and makes them match fulltext
+    searches. An explicit property mapping takes precedence over the dynamic template and drops
+    copy_to, while keeping the field queryable as a keyword.
+
+    One block per search client, each guarded by its own index name property. A stack that is not
+    installed emits neither its <require> nor its <extension>, so the component still resolves;
+    with no search engine at all this renders an empty, inert component. Only one of OpenSearch 1
+    and OpenSearch 2 can ever be installed, they declare <conflicts> on each other, but OpenSearch 1
+    and Elasticsearch 9 do coexist during a migration, so several blocks may render at once.
+
+    Ordering matters: IndexConfig.merge() preserves the base mapping only when the INCOMING
+    descriptor is the appending one, hence the <require> on the component holding it.
+
+    Mappings apply at index creation. On an existing index, drop it and reindex. The green blocks
+    cover a blue/green reindex, where the green index is created fresh and would otherwise be built
+    polluted.
+  -->
+
+  <!-- OpenSearch 1.x, Elasticsearch 7.x-8.x -->
+<#if (nuxeo.search.client.default.opensearch1.index.name)?has_content>
+  <require>org.nuxeo.ecm.core.search.client.opensearch1.contrib</require>
+
+  <extension target="org.nuxeo.runtime.opensearch1.OpenSearchComponent" point="index">
+    <index name="${nuxeo.search.client.default.opensearch1.index.name}">
+      <mapping append="true">
+        {
+          "properties": {
+            "imgh:bands": {
+              "type": "keyword",
+              "ignore_above": 32
+            }
+          }
+        }
+      </mapping>
+    </index>
+  </extension>
+</#if>
+<#if (nuxeo.search.client.green.opensearch1.index.name)?has_content>
+  <require>org.nuxeo.ecm.core.search.client.opensearch1.green.contrib</require>
+
+  <extension target="org.nuxeo.runtime.opensearch1.OpenSearchComponent" point="index">
+    <index name="${nuxeo.search.client.green.opensearch1.index.name}">
+      <mapping append="true">
+        {
+          "properties": {
+            "imgh:bands": {
+              "type": "keyword",
+              "ignore_above": 32
+            }
+          }
+        }
+      </mapping>
+    </index>
+  </extension>
+</#if>
+
+  <!-- OpenSearch 2.x -->
+<#if (nuxeo.search.client.default.opensearch2.index.name)?has_content>
+  <require>org.nuxeo.ecm.core.search.client.opensearch2.contrib</require>
+
+  <extension target="org.nuxeo.runtime.opensearch2.OpenSearchComponent" point="index">
+    <index name="${nuxeo.search.client.default.opensearch2.index.name}">
+      <mapping append="true">
+        {
+          "properties": {
+            "imgh:bands": {
+              "type": "keyword",
+              "ignore_above": 32
+            }
+          }
+        }
+      </mapping>
+    </index>
+  </extension>
+</#if>
+<#if (nuxeo.search.client.green.opensearch2.index.name)?has_content>
+  <require>org.nuxeo.ecm.core.search.client.opensearch2.green.contrib</require>
+
+  <extension target="org.nuxeo.runtime.opensearch2.OpenSearchComponent" point="index">
+    <index name="${nuxeo.search.client.green.opensearch2.index.name}">
+      <mapping append="true">
+        {
+          "properties": {
+            "imgh:bands": {
+              "type": "keyword",
+              "ignore_above": 32
+            }
+          }
+        }
+      </mapping>
+    </index>
+  </extension>
+</#if>
+
+  <!-- Elasticsearch 9.x -->
+<#if (nuxeo.search.client.default.elasticsearch9.index.name)?has_content>
+  <require>org.nuxeo.ecm.core.search.client.elasticsearch9.contrib</require>
+
+  <extension target="org.nuxeo.runtime.elasticsearch9.ElasticsearchComponent" point="index">
+    <index name="${nuxeo.search.client.default.elasticsearch9.index.name}">
+      <mapping append="true">
+        {
+          "properties": {
+            "imgh:bands": {
+              "type": "keyword",
+              "ignore_above": 32
+            }
+          }
+        }
+      </mapping>
+    </index>
+  </extension>
+</#if>
+<#if (nuxeo.search.client.green.elasticsearch9.index.name)?has_content>
+  <require>org.nuxeo.ecm.core.search.client.elasticsearch9.green.contrib</require>
+
+  <extension target="org.nuxeo.runtime.elasticsearch9.ElasticsearchComponent" point="index">
+    <index name="${nuxeo.search.client.green.elasticsearch9.index.name}">
+      <mapping append="true">
+        {
+          "properties": {
+            "imgh:bands": {
+              "type": "keyword",
+              "ignore_above": 32
+            }
+          }
+        }
+      </mapping>
+    </index>
+  </extension>
+</#if>
+
+</component>
+</#escape>

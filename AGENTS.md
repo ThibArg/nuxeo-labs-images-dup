@@ -94,17 +94,31 @@ Fixing one does nothing for the other: `ecm:fulltextSimple` is never shipped to 
   **identical on all three stacks**, down to the line numbers.
 - **The fix is ordering sensitive.** `merge()` preserves the base mapping only when the *incoming*
   descriptor has `append="true"`; in the other direction `extraMappingContents` is silently dropped.
-  Every template declares `<require>` on the component holding the base mapping. Remove it and the
+  Every block declares `<require>` on the component holding the base mapping. Remove it and the
   override vanishes without any error.
-- **Three templates ship, none is activated.** `assembly.xml` deliberately no longer emits
-  `<config addtemplate=.../>`; the admin picks with `nuxeo.append.templates.imagesdup=<template>`.
-  Each has a blue and a green file; the green one matters because mappings only apply at index
-  creation and a blue/green reindex creates the green index fresh.
-- Both the `<require>` and the `<extension>` sit **inside** the `<#if ...index.name?has_content>` guard,
-  so a template activated on the wrong stack renders an inert component rather than a missing target.
+- **One template, auto-activated, covering every stack.**
+  `install/templates/nuxeo-labs-images-dup/` ships a single `.nxftl` with six `<#if>` blocks: blue and
+  green for opensearch1, opensearch2 and elasticsearch9. `assembly.xml` activates it with
+  `<config addtemplate=.../>`, so the admin configures nothing.
+- **Why guarding on an absent property is safe.** `TextTemplate` builds the FreeMarker model as a nested
+  map by splitting dotted keys (`TextTemplate.java:382-416`), so a property from a template that was
+  never activated is simply missing. The parenthesised form `(a.b.c)?has_content` covers a missing
+  *intermediate* step; Nuxeo relies on the same mechanism across packages in
+  `opensearch1-search-client-config.xml.nxftl:7`, which guards on `(nuxeo.opensearch1.embed.enabled)!`,
+  a property defined only by the separate opensearch1-embed package. `nuxeo.search.client.default` is
+  always a Map because `common-base/nuxeo.defaults:150-151` defines `.name` and `.scroller.index.name`.
+- **Rendering was verified empirically**, not inferred: the template was run through `TextTemplate` with
+  the property sets of seven deployments (no engine, each stack alone, green empty, blue+green,
+  OS1 -> ES9 migration) and emitted exactly the expected blocks. Re-run that check if the guards change.
+- Because the `<require>` sits inside its `<#if>`, only installed stacks emit one, so the component
+  always resolves. **It is a single component though**, so a `<require>` that cannot resolve would take
+  all the blocks down with it; that needs an index-name property set without the matching package
+  installed, and shows up as `Pending` in the startup banner.
+- Mappings are applied **only at index creation**. Existing deployments need a drop + reindex.
 - Only opensearch1 is covered by a test (`testBandKeysAreNotIndexedInFulltext`, embedded node). The
-  opensearch2 and elasticsearch9 templates are built from verified source metadata but **not
-  automatically tested**.
+  opensearch2 and elasticsearch9 blocks are built from verified source metadata but **not automatically
+  tested**: the two clients are private SNAPSHOT artifacts, their OpenSearch jars conflict with
+  opensearch1 on the classpath, and elasticsearch9 ships no embedded server.
 - **Repository fulltext is still polluted.** Beyond noise, writing `imgh:bands` marks the path dirty and
   schedules an extra `FulltextExtractorWork` per hash store. `store()` disables versioning, DC, audit and
   notifications but cannot disable this. The `<excludeField>` cure is deployment-specific (different

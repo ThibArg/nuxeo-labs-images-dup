@@ -57,11 +57,11 @@ The first available view is used for hashing. Changing the first view changes th
 
 Similar images are found by querying the `imgh:bands` property through the Search service. This requires a **search engine** search client: the `repository` client, which queries the repository directly, cannot serve it. Install one of:
 
-| Search stack | Package | Plugin template to activate |
-|---|---|---|
-| OpenSearch 1.x, Elasticsearch 7.x–8.x | `nuxeo-search-client-opensearch1` | `nuxeo-labs-images-dup-opensearch1` |
-| OpenSearch 2.x | `nuxeo-search-client-opensearch2` | `nuxeo-labs-images-dup-opensearch2` |
-| Elasticsearch 9.x | `nuxeo-search-client-elasticsearch9` | `nuxeo-labs-images-dup-elasticsearch9` |
+| Search stack | Package |
+|---|---|
+| OpenSearch 1.x, Elasticsearch 7.x–8.x | `nuxeo-search-client-opensearch1` |
+| OpenSearch 2.x | `nuxeo-search-client-opensearch2` |
+| Elasticsearch 9.x | `nuxeo-search-client-elasticsearch9` |
 
 `nuxeo-search-client-opensearch1` and `nuxeo-search-client-opensearch2` are mutually exclusive. MongoDB Atlas Search (`nuxeo-search-client-mongoatlas`) is **not supported**: it has not been tested and its indexing model differs.
 
@@ -75,13 +75,9 @@ The index actually queried is the one declared as default for the repository, so
 
 Band keys are opaque strings such as `f2eabf4f:0:cb94`. Two different fulltext indexes can pick them up, and they are independent of each other.
 
-**Search engine fulltext: activate the template matching your stack.** The package installs the three templates but activates none, because the right one depends on your search client. Add it in `nuxeo.conf`:
+**Search engine fulltext is handled for you.** The Marketplace package installs and activates a template that maps `imgh:bands` explicitly, which overrides the default dynamic mapping and removes the `copy_to` into the fulltext field. It detects the search client in use, covers OpenSearch 1.x, OpenSearch 2.x and Elasticsearch 9.x, and also covers the green index of a blue/green reindex. Nothing to configure.
 
-```
-nuxeo.append.templates.imagesdup=nuxeo-labs-images-dup-opensearch1
-```
-
-The template maps `imgh:bands` explicitly, which overrides the default dynamic mapping and removes the `copy_to` into the fulltext field. It also covers the green index of a blue/green reindex. The mapping is applied when an index is created, so on an existing deployment you must drop the index and reindex for it to take effect.
+The mapping is applied when an index is created, so on an existing deployment you must drop the index and reindex for it to take effect.
 
 **Repository fulltext is not handled, and you should configure it.** By default Nuxeo puts every string property of every schema into `ecm:fulltextSimple`, including `imgh:bands`. Besides adding noise, it means each stored hash marks the document dirty for fulltext and schedules an extra extraction job per picture. Contribute the exclusion matching your repository:
 
