@@ -1,0 +1,30 @@
+<#escape x as x?xml>
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.opensearch2.green.mapping">
+<#if (nuxeo.search.client.green.opensearch2.index.name)?has_content>
+
+  <!--
+    Same override for the green index of a blue/green reindex. It matters precisely there: the
+    mapping is only applied when an index is created, and the green index is created fresh.
+    Without this the new index is built polluted and the migration has to be redone.
+  -->
+  <require>org.nuxeo.ecm.core.search.client.opensearch2.green.contrib</require>
+
+  <extension target="org.nuxeo.runtime.opensearch2.OpenSearchComponent" point="index">
+    <index name="${nuxeo.search.client.green.opensearch2.index.name}">
+      <mapping append="true">
+        {
+          "properties": {
+            "imgh:bands": {
+              "type": "keyword",
+              "ignore_above": 32
+            }
+          }
+        }
+      </mapping>
+    </index>
+  </extension>
+
+</#if>
+</component>
+</#escape>

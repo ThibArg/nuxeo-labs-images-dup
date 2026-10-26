@@ -1,0 +1,36 @@
+<#escape x as x?xml>
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.opensearch1.mapping">
+<#if (nuxeo.search.client.default.opensearch1.index.name)?has_content>
+
+  <!--
+    imgh:bands holds opaque search keys. The default dynamic mapping indexes every string with
+    copy_to="all_field", which pushes them into the fulltext field and makes them match fulltext
+    searches. An explicit property mapping takes precedence over the dynamic template and drops
+    copy_to, while keeping the field queryable as a keyword.
+
+    Ordering matters: OpenSearchIndexConfig.merge() preserves the base mapping only when the
+    INCOMING descriptor is the appending one, so this must be merged after the base contribution.
+
+    The mapping is applied when the index is created. On an existing index, drop it and reindex.
+  -->
+  <require>org.nuxeo.ecm.core.search.client.opensearch1.contrib</require>
+
+  <extension target="org.nuxeo.runtime.opensearch1.OpenSearchComponent" point="index">
+    <index name="${nuxeo.search.client.default.opensearch1.index.name}">
+      <mapping append="true">
+        {
+          "properties": {
+            "imgh:bands": {
+              "type": "keyword",
+              "ignore_above": 32
+            }
+          }
+        }
+      </mapping>
+    </index>
+  </extension>
+
+</#if>
+</component>
+</#escape>

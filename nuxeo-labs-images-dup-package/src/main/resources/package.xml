@@ -16,10 +16,9 @@
     <name>lts</name>
     <version>[@NUXEO_TARGET_VERSION@,)</version>
   </target-platform>
-  <!-- The duplicate search runs on the OpenSearch search client, it is not optional -->
-  <dependencies>
-    <package>nuxeo-search-client-opensearch1</package>
-  </dependencies>
+  <!-- A search engine client is required, but any of nuxeo-search-client-opensearch1,
+       nuxeo-search-client-opensearch2 or nuxeo-search-client-elasticsearch9 will do, and the
+       package format cannot express alternatives. See the README. -->
   <license>Apache License, Version 2.0</license>
   <license-url>http://www.apache.org/licenses/LICENSE-2.0</license-url>
   <visibility>DEV</visibility>
