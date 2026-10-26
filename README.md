@@ -24,6 +24,12 @@ To search for similar images, call the `ImageHash.FindSimilar` Automation operat
 | `orientations` | Also compare rotated and mirrored images. |
 | `maxResults` | Maximum returned documents; defaults to 50. |
 
+**Hamming distance** is the number of differing bits between two 64-bit hashes: `0` means identical hashes, and the lower the value, the more similar the images. `threshold` is the distance at or below which two images are considered duplicates.
+
+**Search radius** is how far the candidate query looks around the hash. The hash is split into four 16-bit bands, and candidates are the documents sharing at least one band. A higher radius also queries the variants of each band that differ by 1 bit (`radius=1`) or by 1 or 2 bits (`radius=2`), which finds more candidates but queries many more keys: 4 keys at radius 0, 68 at radius 1, 548 at radius 2. A radius `r` is guaranteed to find every image within a distance of `4r + 3`.
+
+**`maxResults` does not make the search faster.** The candidate query and the distance comparison always run on the whole candidate set, then the results are sorted by distance and only then truncated. So `maxResults` only reduces the number of documents loaded from the repository and the size of the response. What drives the search cost is `radius` and `orientations`, which multiplies the number of queried keys by 8. The hard limit on the candidate set is `maxCandidates`, see [Configuration](#configuration).
+
 To compute or refresh hashes for existing documents, submit the `computeImageHash` bulk action with a query selecting Picture documents. Set its optional `force` parameter to `true` to recompute hashes that already use the current configuration.
 
 ## Configuration
