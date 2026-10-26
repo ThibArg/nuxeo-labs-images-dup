@@ -77,6 +77,13 @@ public interface ImageHashService {
     String DUPLICATES_EVENT_PROPERTY = "duplicates";
 
     /**
+     * Default maximum number of similar documents returned to a caller.
+     *
+     * @since 2025.1.0
+     */
+    int DEFAULT_MAX_RESULTS = 50;
+
+    /**
      * Returns the signature of the hashes computed with the current configuration. Hashes stored with another
      * signature are ignored by searches.
      *

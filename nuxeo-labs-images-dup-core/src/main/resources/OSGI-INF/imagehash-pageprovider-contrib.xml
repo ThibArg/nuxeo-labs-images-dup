@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.pageprovider">
+
+  <extension target="org.nuxeo.ecm.platform.query.api.PageProviderService" point="providers">
+    <genericPageProvider name="imagehash_similar_images"
+      class="nuxeo.labs.images.dup.pageprovider.SimilarImagesPageProvider">
+      <pageSize>40</pageSize>
+    </genericPageProvider>
+  </extension>
+
+</component>

@@ -62,7 +62,7 @@ public class FindSimilarImagesOp {
     protected Boolean orientations;
 
     @Param(name = "maxResults", required = false)
-    protected int maxResults = 50;
+    protected int maxResults = ImageHashService.DEFAULT_MAX_RESULTS;
 
     /**
      * @since 2025.1.0

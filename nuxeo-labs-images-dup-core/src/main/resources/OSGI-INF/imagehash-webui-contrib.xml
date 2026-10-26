@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.webui">
+
+  <extension target="org.nuxeo.ecm.platform.WebResources" point="resources">
+    <resource name="nuxeo-labs-images-dup.html" type="import">
+      <uri>/ui/nuxeo-labs-images-dup/nuxeo-labs-images-dup.html</uri>
+    </resource>
+  </extension>
+
+  <extension target="org.nuxeo.ecm.platform.WebResources" point="bundles">
+    <bundle name="web-ui">
+      <resources append="true">
+        <resource>nuxeo-labs-images-dup.html</resource>
+      </resources>
+    </bundle>
+  </extension>
+
+</component>

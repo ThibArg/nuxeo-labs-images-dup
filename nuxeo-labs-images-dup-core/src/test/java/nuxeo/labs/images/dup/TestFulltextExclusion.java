@@ -56,6 +56,8 @@ import org.nuxeo.runtime.test.runner.FeaturesRunner;
 // AutomationFeature rather than CoreFeature so the bundle's operations contribution resolves
 @Features(AutomationFeature.class)
 @ConditionalIgnoreRule.Ignore(condition = IgnoreIfNotVCSRepository.class, cause = "the test contribution is the VCS one")
+// target of the bundle's Web UI contribution
+@Deploy("org.nuxeo.web.resources.core")
 @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core")
 @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-fulltext-exclude-contrib.xml")
 public class TestFulltextExclusion {

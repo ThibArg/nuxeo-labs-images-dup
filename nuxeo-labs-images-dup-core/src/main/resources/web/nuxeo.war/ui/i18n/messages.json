@@ -1,0 +1,17 @@
+{
+  "imagesDup.tab.label": "Similar Images",
+  "imagesDup.threshold": "Threshold",
+  "imagesDup.radius": "Radius",
+  "imagesDup.orientations": "Orientations",
+  "imagesDup.maxResults": "Max results",
+  "imagesDup.default": "Default",
+  "imagesDup.yes": "Yes",
+  "imagesDup.no": "No",
+  "imagesDup.search": "Search",
+  "imagesDup.reset": "Reset",
+  "imagesDup.distance": "Distance",
+  "imagesDup.location": "Location",
+  "imagesDup.empty": "No similar images found",
+  "imagesDup.error": "The similar images search failed",
+  "imagesDup.invalidParameters": "Threshold must be an integer from 0 to 64, and max results an integer of at least 1"
+}

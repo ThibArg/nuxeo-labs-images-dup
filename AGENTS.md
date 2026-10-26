@@ -9,7 +9,7 @@ Nuxeo LTS 2025 plugin. Detects near-duplicate images on `Picture`-faceted docume
   `nuxeo-sandbox`. **This is intentional, do not "fix" it.** Once validated the plugin is forked to
   `nuxeo-sandbox` and this repo becomes an archive.
 - Everything written (README, this file, code comments, Javadoc, commit messages, UI labels) is in
-  **English**.
+  **English**. The one exception is the French Web UI translation, `messages-fr.json`.
 - `AGENTS.md` is deliberately **not** in `.gitignore` here, it is committed.
 - Javadoc tag is `@since 2025.1.0` everywhere, not `@since 2025.XX`.
 - No CI, no linter, no formatter config in this repo. Java 21, Maven 3.8.
@@ -18,7 +18,7 @@ Nuxeo LTS 2025 plugin. Detects near-duplicate images on `Picture`-faceted docume
 
 | Module | Content |
 |---|---|
-| `nuxeo-labs-images-dup-core` | All Java code, schema, OSGI-INF contributions, tests |
+| `nuxeo-labs-images-dup-core` | All Java code, schema, OSGI-INF contributions, Web UI files, tests |
 | `nuxeo-labs-images-dup-package` | Marketplace package assembly only (ant-assembly-maven-plugin), no code |
 
 Bundle symbolic name used in `@Deploy`: `nuxeo.labs.images.dup.nuxeo-labs-images-dup-core`.
@@ -215,6 +215,11 @@ which would overwrite the database template's own output.
 - `TestFulltextExclusion` uses `AutomationFeature`, not `CoreFeature`: the class `@Deploy`s the whole
   bundle so the test contribution can be resolved from it, and `CoreFeature` alone leaves
   `imagehash-operations-contrib.xml` as `Missing: 1` in the startup banner.
+- Both test classes also `@Deploy("org.nuxeo.web.resources.core")` (test dependency
+  `nuxeo-web-resources-core`): it is the target of `imagehash-webui-contrib.xml`, which is otherwise
+  reported `Missing: 1`. Production is fine, the bundle is in `nuxeo-nxr-server`.
+- The page provider tests build the provider through `PageProviderHelper.getSearchDocumentModel`, the
+  same path as the REST endpoint, so named parameters are tested as they really arrive.
 
 ## Architecture gotchas
 
@@ -243,6 +248,49 @@ which would overwrite the database template's own output.
 - `SearchQuery` default limit is 10 — always set `.limit(...)` explicitly.
 - `PICTURE_VIEWS_GENERATION_DONE_EVENT` is imported from the **deprecated** `PictureViewsGenerationWork`.
   The same `"pictureViewsGenerationDone"` constant exists on the non-deprecated `RecomputeViewsAction`.
+
+## Web UI
+
+The "Similar Images" tab ships in the core bundle: HTML imports under
+`web/nuxeo.war/ui/nuxeo-labs-images-dup/` (`<dom-module>` + `Polymer({...})`, same style as
+`nuxeo-labs-signature-webui`), i18n under `web/nuxeo.war/ui/i18n/`, `OSGI-INF/deployment-fragment.xml`
+and `imagehash-webui-contrib.xml`. Web UI is only an `<optional-dependencies>` of the package.
+
+- **The data comes from the `imagehash_similar_images` page provider** (`SimilarImagesPageProvider`), a
+  thin wrapper around `findSimilar()`. `nuxeo-results` then gets paging, grid/list, selection actions
+  and enrichers for free, and permissions stay those of the search layer. Every page request reruns the
+  whole search, there is no cache.
+- **The named parameter is `limit`, not `maxResults`.** `QueryExecutor.getNamedParameters` filters with
+  `EnumUtils.isValidEnum(QueryParams.class, key)`, which compares enum *names* (`MAX_RESULTS`), so today
+  every query-string key reaches the provider, `maxResults` included. But `maxResults` is declared
+  reserved (`QueryExecutor.MAX_RESULTS`) and is also an `AbstractPageProvider` property: fixing that
+  comparison upstream would silently drop it.
+- Named parameters arrive as `searchDocument.getContextData(PageProviderService.NAMED_PARAMETERS)`
+  (`PageProviderHelper.fillSearchDocument`), through REST GET as well as `Repository.PageProvider`
+  (Web UI POST mode).
+- `PageProviderServiceImpl` calls `setCurrentPage()`, which fetches, then `setCurrentPageOffset()`, which
+  takes precedence. The provider overrides `setCurrentPageOffset` to drop the cached page when the
+  offset changes. Keep it.
+- **Distance**: the provider puts it in each document's context data and `SimilarImageJsonEnricher`
+  (`imageSimilarity`) writes it. This works only because the REST writer serializes the very instances
+  returned by `getCurrentPage()`.
+- **`<require>all</require>` in the deployment fragment, never `<require>org.nuxeo.web.ui</require>`.**
+  The "all" marker (`FragmentDescriptor.ALL`) orders the fragment after Web UI's own, so the i18n
+  `append` merges into Web UI's `messages.json` (`AppendCommand` merges JSON). Requiring the Web UI
+  bundle when it is not installed skips the fragment and logs "Unknown bundle" as a deployment error.
+  Without Web UI the fragment still copies its files under `nuxeo.war/ui`, which is harmless.
+- **Every document tab page is rendered, selected or not**: the views `iron-pages` only toggles the
+  `visible` attribute (`selected-attribute="visible"`). `nuxeo-results` sits in a
+  `<dom-if if="[[visible]]">`, otherwise its view setup would run a similarity search on every Picture
+  opened.
+- Do not bind `document` on `nuxeo-results`: the Web UI sources this was built against then save the
+  table settings as document-level preferences on the backend. The table has no `settings-enabled`,
+  resize or reorder for the same reason.
+- `_params` must never be `null`, `nuxeo-page-provider` destructures its `params`.
+- Globals usable from HTML imports (`Nuxeo.LayoutBehavior`, `Nuxeo.I18nBehavior`,
+  `Polymer.IronResizableBehavior`...) are listed in Web UI's `legacy.js`.
+- **The HTML/JS is not covered by automated tests.** Check manually that the tab shows on Pictures only
+  and that opening a Picture sends no `imagehash_similar_images` request until the tab is selected.
 
 ## Status
 

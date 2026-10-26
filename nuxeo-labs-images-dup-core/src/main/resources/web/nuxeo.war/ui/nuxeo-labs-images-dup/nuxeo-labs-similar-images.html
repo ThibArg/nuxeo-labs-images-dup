@@ -1,0 +1,347 @@
+<!--
+(C) Copyright 2026 Nuxeo (http://nuxeo.com/) and others.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Contributors:
+    Thibaud Arguillere
+-->
+
+<!--
+`nuxeo-labs-similar-images`
+Document tab listing the documents whose image is similar to the current one, closest first.
+@group Nuxeo UI
+@element nuxeo-labs-similar-images
+@since 2025.1.0
+-->
+<dom-module id="nuxeo-labs-similar-images">
+  <template>
+    <style include="nuxeo-styles">
+      :host {
+        display: block;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 16px;
+        padding-bottom: 8px;
+      }
+
+      .toolbar nuxeo-input,
+      .toolbar nuxeo-select {
+        width: 140px;
+      }
+
+      .error {
+        color: var(--nuxeo-warn-text, #de350b);
+        margin-bottom: 8px;
+      }
+
+      .results {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        --nuxeo-results-view-height: calc(100vh - 290px - var(--nuxeo-app-top, 0px));
+      }
+
+      .ellipsis {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .title {
+        width: calc(100% - 38px);
+      }
+    </style>
+
+    <nuxeo-page-provider
+      id="provider"
+      provider="imagehash_similar_images"
+      page-size="40"
+      params="[[_params]]"
+      enrichers="thumbnail, permissions, imageSimilarity"
+      schemas="dublincore,common,uid"
+      headers='{"fetch-document": "properties", "translate-directoryEntry": "label"}'
+      on-update="_onUpdate"
+      on-error="_onError"
+    >
+    </nuxeo-page-provider>
+
+    <div class="toolbar" on-keydown="_onKeydown">
+      <nuxeo-input
+        label="[[i18n('imagesDup.threshold')]]"
+        type="number"
+        min="0"
+        max="64"
+        value="{{threshold}}"
+        placeholder="[[i18n('imagesDup.default')]]"
+      >
+      </nuxeo-input>
+      <nuxeo-select label="[[i18n('imagesDup.radius')]]" options="[[_radiusOptions]]" selected="{{radius}}">
+      </nuxeo-select>
+      <nuxeo-select
+        label="[[i18n('imagesDup.orientations')]]"
+        options="[[_orientationsOptions]]"
+        selected="{{orientations}}"
+      >
+      </nuxeo-select>
+      <nuxeo-input
+        label="[[i18n('imagesDup.maxResults')]]"
+        type="number"
+        min="1"
+        value="{{maxResults}}"
+        placeholder="[[i18n('imagesDup.default')]]"
+      >
+      </nuxeo-input>
+      <paper-button noink class="primary" on-tap="_search">[[i18n('imagesDup.search')]]</paper-button>
+      <paper-button noink class="secondary" on-tap="_reset">[[i18n('imagesDup.reset')]]</paper-button>
+    </div>
+
+    <div class="error" hidden$="[[!_error]]">[[_error]]</div>
+
+    <!-- every tab page is rendered even when hidden: only search once the tab is shown -->
+    <template is="dom-if" if="[[visible]]">
+      <nuxeo-results
+        id="results"
+        name="similarImages"
+        display-mode="grid"
+        nx-provider="[[_provider]]"
+        selected-items="{{selectedItems}}"
+      >
+        <nuxeo-data-grid
+          name="grid"
+          icon="nuxeo:view-thumbnails"
+          class="results"
+          empty-label="[[i18n('imagesDup.empty')]]"
+          selection-enabled
+        >
+          <template>
+            <nuxeo-document-grid-thumbnail
+              class="grid-box"
+              selected$="{{selected}}"
+              index="[[index]]"
+              doc="[[item]]"
+              on-navigate="_navigate"
+              selected-items="[[selectedItems]]"
+            >
+            </nuxeo-document-grid-thumbnail>
+          </template>
+        </nuxeo-data-grid>
+
+        <nuxeo-data-table
+          name="table"
+          icon="nuxeo:view-list"
+          class="results"
+          empty-label="[[i18n('imagesDup.empty')]]"
+          selection-enabled
+          on-row-clicked="_navigate"
+        >
+          <nuxeo-data-table-column name="[[i18n('documentContentView.datatable.header.title')]]" flex="100">
+            <template>
+              <nuxeo-document-thumbnail document="[[item]]"></nuxeo-document-thumbnail>
+              <a class="title ellipsis" href$="[[urlFor(item)]]" on-tap="_navigate">[[item.title]]</a>
+            </template>
+          </nuxeo-data-table-column>
+          <nuxeo-data-table-column name="[[i18n('imagesDup.distance')]]" flex="20">
+            <template>[[_distance(item)]]</template>
+          </nuxeo-data-table-column>
+          <nuxeo-data-table-column name="[[i18n('imagesDup.location')]]" flex="80">
+            <template>
+              <span class="ellipsis" title$="[[item.path]]">[[item.path]]</span>
+            </template>
+          </nuxeo-data-table-column>
+          <nuxeo-data-table-column name="[[i18n('documentContentView.datatable.header.modified')]]" flex="40">
+            <template>
+              <nuxeo-date datetime="[[item.properties.dc:modified]]"></nuxeo-date>
+            </template>
+          </nuxeo-data-table-column>
+          <nuxeo-data-table-column name="[[i18n('documentContentView.datatable.header.author')]]" flex="40">
+            <template>
+              <nuxeo-user-tag user="[[item.properties.dc:creator]]"></nuxeo-user-tag>
+            </template>
+          </nuxeo-data-table-column>
+        </nuxeo-data-table>
+      </nuxeo-results>
+    </template>
+  </template>
+
+  <script>
+    Polymer({
+      is: 'nuxeo-labs-similar-images',
+      behaviors: [Nuxeo.LayoutBehavior],
+      properties: {
+        document: Object,
+        // set by the document views iron-pages on the selected tab
+        visible: {
+          type: Boolean,
+          value: false
+        },
+        threshold: {
+          type: String,
+          value: ''
+        },
+        radius: {
+          type: String,
+          value: 'default'
+        },
+        orientations: {
+          type: String,
+          value: 'default'
+        },
+        maxResults: {
+          type: String,
+          value: ''
+        },
+        selectedItems: Array,
+        _submitted: {
+          type: Object,
+          value: function() {
+            return {};
+          }
+        },
+        _params: {
+          type: Object,
+          computed: '_computeParams(document, _submitted)'
+        },
+        _provider: Object,
+        _error: {
+          type: String,
+          value: ''
+        },
+        _radiusOptions: {
+          type: Array,
+          computed: '_computeRadiusOptions(i18n)'
+        },
+        _orientationsOptions: {
+          type: Array,
+          computed: '_computeOrientationsOptions(i18n)'
+        }
+      },
+
+      observers: ['_refresh(_params, visible)'],
+
+      ready: function() {
+        this._provider = this.$.provider;
+      },
+
+      _computeParams: function(document, submitted) {
+        // never null: nuxeo-page-provider destructures its params
+        if (!document || !document.uid) {
+          return {};
+        }
+        return Object.assign({ docId: document.uid }, submitted);
+      },
+
+      _computeRadiusOptions: function() {
+        return [
+          { id: 'default', label: this.i18n('imagesDup.default') },
+          { id: '0', label: '0' },
+          { id: '1', label: '1' },
+          { id: '2', label: '2' }
+        ];
+      },
+
+      _computeOrientationsOptions: function() {
+        return [
+          { id: 'default', label: this.i18n('imagesDup.default') },
+          { id: 'true', label: this.i18n('imagesDup.yes') },
+          { id: 'false', label: this.i18n('imagesDup.no') }
+        ];
+      },
+
+      _refresh: function() {
+        if (!this.visible || !this._params || !this._params.docId) {
+          return;
+        }
+        var results = this.$$('#results');
+        // not stamped yet: it fetches by itself once its view is set up
+        if (results) {
+          results.fetch();
+        }
+      },
+
+      _search: function() {
+        var threshold = this._parseInt(this.threshold, 0, 64);
+        var maxResults = this._parseInt(this.maxResults, 1, Number.MAX_SAFE_INTEGER);
+        if (Number.isNaN(threshold) || Number.isNaN(maxResults)) {
+          this.fire('notify', { message: this.i18n('imagesDup.invalidParameters') });
+          return;
+        }
+        var submitted = {};
+        if (threshold !== null) {
+          submitted.threshold = threshold;
+        }
+        if (this.radius && this.radius !== 'default') {
+          submitted.radius = Number(this.radius);
+        }
+        if (this.orientations && this.orientations !== 'default') {
+          submitted.orientations = this.orientations === 'true';
+        }
+        if (maxResults !== null) {
+          // the REST search endpoint reserves "maxResults"
+          submitted.limit = maxResults;
+        }
+        this._submitted = submitted;
+      },
+
+      _reset: function() {
+        this.threshold = '';
+        this.radius = 'default';
+        this.orientations = 'default';
+        this.maxResults = '';
+        this._search();
+      },
+
+      // null when blank, NaN when not an integer within [min, max]
+      _parseInt: function(value, min, max) {
+        var text = value === null || value === undefined ? '' : String(value).trim();
+        if (text === '') {
+          return null;
+        }
+        if (!/^\d+$/.test(text)) {
+          return NaN;
+        }
+        var number = parseInt(text, 10);
+        return number >= min && number <= max ? number : NaN;
+      },
+
+      _onKeydown: function(e) {
+        if (e.key === 'Enter' && e.target.localName === 'nuxeo-input') {
+          this._search();
+        }
+      },
+
+      _onUpdate: function() {
+        this._error = '';
+      },
+
+      _onError: function() {
+        this._error = this.i18n('imagesDup.error');
+      },
+
+      _distance: function(item) {
+        var similarity = item && item.contextParameters && item.contextParameters.imageSimilarity;
+        return similarity ? similarity.distance : '';
+      },
+
+      _navigate: function(e) {
+        this.fire('navigate', { doc: (e.model || e.detail).item });
+        e.stopPropagation();
+      }
+    });
+  </script>
+</dom-module>

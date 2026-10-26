@@ -36,6 +36,32 @@ The first three fall back to the [configuration](#configuration), so the usual w
 
 To compute or refresh hashes for existing documents, submit the `computeImageHash` bulk action with a query selecting Picture documents. Set its optional `force` parameter to `true` to recompute hashes that already use the current configuration.
 
+### Web UI
+
+With Web UI, documents with the Picture facet get a **Similar Images** tab. Web UI is only an optional dependency of the package: without it, everything else works the same.
+
+The tab lists the near duplicates the current user can read, closest first, in the standard grid (thumbnails) and list views. The list view shows the Hamming distance of each document.
+
+The toolbar at the top tunes the search with the same parameters as the operation: **Threshold**, **Radius**, **Orientations** and **Max results**. An empty field, or **Default**, uses the configured value. Click **Search** or press Enter to run the search, **Reset** goes back to the configured values. Nothing is searched until the tab is displayed.
+
+### REST API
+
+The tab reads the `imagehash_similar_images` page provider, which can also be called directly:
+
+```
+GET /nuxeo/api/v1/search/pp/imagehash_similar_images/execute?docId=<document id>&threshold=8&radius=1&orientations=true&limit=50
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `docId` | The Picture document to compare. Without it, the result is empty. |
+| `threshold`, `radius`, `orientations` | Same as the operation. When missing or empty, the configured values are used. |
+| `limit` | Maximum returned documents, default `50`. Same role as the operation's `maxResults`, which is a name the REST search endpoint reserves. |
+
+The usual paging parameters (`pageSize`, `currentPageIndex`, `offset`) apply, and invalid values return a `400`. Each page request runs the whole search again, so a `pageSize` covering `limit` avoids repeating it.
+
+Add the `imageSimilarity` enricher, for example with the `enrichers-document: imageSimilarity` header, to get the distance of each document in `contextParameters.imageSimilarity.distance`.
+
 ## Configuration
 
 Contribute to the `configuration` extension point of `nuxeo.labs.images.dup.ImageHashService`. All elements are optional and contributions are merged:
@@ -61,7 +87,7 @@ Contribute to the `configuration` extension point of `nuxeo.labs.images.dup.Imag
 </component>
 ```
 
-`threshold` is shared by both paths, but the radius and the orientations are split: `detectionRadius` and `detectionOrientations` apply to the automatic detection that runs after picture views generation, `searchRadius` and `searchOrientations` to the `ImageHash.FindSimilar` operation. The defaults keep the automatic path cheaper than the explicit search.
+`threshold` is shared by both paths, but the radius and the orientations are split: `detectionRadius` and `detectionOrientations` apply to the automatic detection that runs after picture views generation, `searchRadius` and `searchOrientations` to the `ImageHash.FindSimilar` operation, the Similar Images tab and its page provider. The defaults keep the automatic path cheaper than the explicit search.
 
 The first available view is used for hashing. Changing the first view changes the hash signature; run the `computeImageHash` bulk action to update existing documents.
 

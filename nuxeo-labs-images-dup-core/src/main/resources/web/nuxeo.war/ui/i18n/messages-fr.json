@@ -1,0 +1,17 @@
+{
+  "imagesDup.tab.label": "Images similaires",
+  "imagesDup.threshold": "Seuil",
+  "imagesDup.radius": "Rayon",
+  "imagesDup.orientations": "Orientations",
+  "imagesDup.maxResults": "Résultats max",
+  "imagesDup.default": "Par défaut",
+  "imagesDup.yes": "Oui",
+  "imagesDup.no": "Non",
+  "imagesDup.search": "Rechercher",
+  "imagesDup.reset": "Réinitialiser",
+  "imagesDup.distance": "Distance",
+  "imagesDup.location": "Emplacement",
+  "imagesDup.empty": "Aucune image similaire trouvée",
+  "imagesDup.error": "La recherche d'images similaires a échoué",
+  "imagesDup.invalidParameters": "Le seuil doit être un entier de 0 à 64, et le nombre de résultats max un entier d'au moins 1"
+}

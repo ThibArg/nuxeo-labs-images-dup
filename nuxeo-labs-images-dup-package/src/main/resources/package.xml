@@ -5,6 +5,7 @@
     <p>Detects near-duplicate images (documents with the Picture facet) using a perceptual hash (pHash).
     Hashes are computed after picture views generation, stored on the document and searched with NXQL,
     so results always honor permissions. A "duplicatedImage" event is fired when near duplicates are found.</p>
+    <p>With Web UI, Picture documents get a "Similar Images" tab listing their near duplicates.</p>
   </description>
   <vendor>Hyland</vendor>
   <installer restart="true" />
@@ -16,6 +17,10 @@
     <name>lts</name>
     <version>[@NUXEO_TARGET_VERSION@,)</version>
   </target-platform>
+  <!-- The "Similar Images" tab needs Web UI, the rest of the plugin does not -->
+  <optional-dependencies>
+    <package>nuxeo-web-ui</package>
+  </optional-dependencies>
   <!-- A search engine client is required, but any of nuxeo-search-client-opensearch1,
        nuxeo-search-client-opensearch2 or nuxeo-search-client-elasticsearch9 will do, and the
        package format cannot express alternatives. See the README. -->

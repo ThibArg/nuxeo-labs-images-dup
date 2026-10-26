@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.marshallers">
+
+  <extension target="org.nuxeo.ecm.core.io.MarshallerRegistry" point="marshallers">
+    <register class="nuxeo.labs.images.dup.io.SimilarImageJsonEnricher" enable="true" />
+  </extension>
+
+</component>

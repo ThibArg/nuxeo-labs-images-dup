@@ -10,4 +10,7 @@ Nuxeo-Component: OSGI-INF/imagehash-schemas-contrib.xml,
  OSGI-INF/imagehash-service.xml,
  OSGI-INF/imagehash-listener-contrib.xml,
  OSGI-INF/imagehash-bulk-contrib.xml,
- OSGI-INF/imagehash-operations-contrib.xml
+ OSGI-INF/imagehash-operations-contrib.xml,
+ OSGI-INF/imagehash-pageprovider-contrib.xml,
+ OSGI-INF/imagehash-marshallers-contrib.xml,
+ OSGI-INF/imagehash-webui-contrib.xml
