@@ -17,16 +17,20 @@ Install the Marketplace package. New or updated Picture documents are hashed aut
 
 To search for similar images, call the `ImageHash.FindSimilar` Automation operation with a Picture document as input. Optional parameters are:
 
-| Parameter | Description |
-|-----------|-------------|
-| `threshold` | Maximum Hamming distance, from 0 to 64. |
-| `radius` | Search radius, from 0 to 2. Higher values find more candidates but cost more. |
-| `orientations` | Also compare rotated and mirrored images. |
-| `maxResults` | Maximum returned documents; defaults to 50. |
+| Parameter | Description | When unset |
+|-----------|-------------|------------|
+| `threshold` | Maximum Hamming distance, from 0 to 64. | `<threshold>`, default `8` |
+| `radius` | Search radius, from 0 to 2. Higher values find more candidates but cost more. | `<searchRadius>`, default `1` |
+| `orientations` | Also compare rotated and mirrored images. | `<searchOrientations>`, default `true` |
+| `maxResults` | Maximum returned documents. | `50`, not configurable |
+
+The first three fall back to the [configuration](#configuration), so the usual way to change them for every caller is to contribute, not to pass them on each call.
 
 **Hamming distance** is the number of differing bits between two 64-bit hashes: `0` means identical hashes, and the lower the value, the more similar the images. `threshold` is the distance at or below which two images are considered duplicates.
 
 **Search radius** is how far the candidate query looks around the hash. The hash is split into four 16-bit bands, and candidates are the documents sharing at least one band. A higher radius also queries the variants of each band that differ by 1 bit (`radius=1`) or by 1 or 2 bits (`radius=2`), which finds more candidates but queries many more keys: 4 keys at radius 0, 68 at radius 1, 548 at radius 2. A radius `r` is guaranteed to find every image within a distance of `4r + 3`.
+
+**`threshold` and `radius` are coupled**: keep `threshold` close to `4 * radius + 3`, which is 3 at radius 0, 7 at radius 1 and 11 at radius 2. Beyond that distance a pair is found only when its differing bits happen not to be spread evenly across the four bands, so raising `threshold` alone widens the accepted distance without widening the search. The default pair, threshold `8` at radius `1`, sits one above the guarantee: around 5% of the pairs at a distance of exactly 8 are missed, which is acceptable on the last accepted distance. Raising `threshold` to 10 while leaving `radius` at 1 would miss roughly a quarter of the pairs it claims to accept, so raise `radius` to 2 as well, and pay the 548 keys.
 
 **`maxResults` does not make the search faster.** The candidate query and the distance comparison always run on the whole candidate set, then the results are sorted by distance and only then truncated. So `maxResults` only reduces the number of documents loaded from the repository and the size of the response. What drives the search cost is `radius` and `orientations`, which multiplies the number of queried keys by 8. The hard limit on the candidate set is `maxCandidates`, see [Configuration](#configuration).
 
@@ -56,6 +60,8 @@ Contribute to the `configuration` extension point of `nuxeo.labs.images.dup.Imag
   </extension>
 </component>
 ```
+
+`threshold` is shared by both paths, but the radius and the orientations are split: `detectionRadius` and `detectionOrientations` apply to the automatic detection that runs after picture views generation, `searchRadius` and `searchOrientations` to the `ImageHash.FindSimilar` operation. The defaults keep the automatic path cheaper than the explicit search.
 
 The first available view is used for hashing. Changing the first view changes the hash signature; run the `computeImageHash` bulk action to update existing documents.
 

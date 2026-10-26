@@ -24,7 +24,9 @@
             <view>FullHD</view>
             <view>OriginalJpeg</view>
           </views>
-          <!-- Max Hamming distance (out of 64 bits) for 2 images to be considered duplicates -->
+          <!-- Max Hamming distance (out of 64 bits) for 2 images to be considered duplicates.
+               Keep it close to 4 * radius + 3 (3, 7 or 11): beyond that distance a pair is found
+               only by luck, so raising the threshold alone widens what is accepted, not what is found -->
           <threshold>8</threshold>
           <!-- Detection after picture views generation. Radius (0-2) per 16-bit band: all images within
                a distance of 3 (radius 0), 7 (radius 1) or 11 (radius 2) are guaranteed to be found -->
