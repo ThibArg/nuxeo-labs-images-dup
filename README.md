@@ -65,6 +65,13 @@ Contribute to the `configuration` extension point of `nuxeo.labs.images.dup.Imag
 
 The first available view is used for hashing. Changing the first view changes the hash signature; run the `computeImageHash` bulk action to update existing documents.
 
+Two settings live in `nuxeo.conf` rather than in the extension point, because the template installed by the Marketplace package needs them before the platform starts:
+
+| Property | Default | Role |
+|---|---|---|
+| `nuxeo.labs.images.dup.fulltext.repository` | `default` | Repository the fulltext exclusion is contributed to. **Must be changed if your repository is not named `default`**, see [Keeping Band Keys Out of Fulltext](#keeping-band-keys-out-of-fulltext) |
+| `nuxeo.labs.images.dup.fulltext.exclude` | `true` | Set to `false` to not contribute the exclusion at all |
+
 ### Search Backend
 
 Similar images are found by querying the `imgh:bands` property through the Search service. This requires a **search engine** search client: the `repository` client, which queries the repository directly, cannot serve it. Install one of:
@@ -100,7 +107,20 @@ Band keys are opaque strings such as `f2eabf4f:0:cb94`. Two different fulltext i
 
 The mapping is applied when an index is created, so on an existing deployment you must drop the index and reindex for it to take effect.
 
-**Repository fulltext is not handled, and you should configure it.** By default Nuxeo puts every string property of every schema into `ecm:fulltextSimple`, including `imgh:bands`. Besides adding noise, it means each stored hash marks the document dirty for fulltext and schedules an extra extraction job per picture. Contribute the exclusion matching your repository:
+**Repository fulltext is handled for you too, but check the repository name.** By default Nuxeo puts every string property of every schema into `ecm:fulltextSimple`, including `imgh:bands`. Besides adding noise, it means each stored hash marks the document dirty for fulltext and schedules an extra extraction job per picture. The same template contributes the exclusion, picking the right form from `nuxeo.db.type`: MongoDB, PostgreSQL, SQL Server, Oracle, MySQL, MariaDB and H2 are covered. The contribution is purely additive, so the exclusions already declared by the Nuxeo database template, such as `thumb:thumbnail`, are preserved.
+
+> [!IMPORTANT]
+> The contribution targets the repository named `default`. **If your repository has another name, set it in `nuxeo.conf`**, otherwise a second, unconfigured repository is declared and the server fails to start:
+>
+> ```
+> nuxeo.labs.images.dup.fulltext.repository=myrepository
+> ```
+>
+> Set `nuxeo.labs.images.dup.fulltext.exclude=false` to disable the exclusion entirely.
+
+Two caveats. The exclusions are read when the repository is initialised, so a restart is needed, and values already written to `ecm:fulltextSimple` stay until the documents are saved again. And the saving is not the same on both backends: MongoDB gets both the extraction filtering and the suppression of the extra job, while a VCS repository only gets the extraction filtering, because the dirty-path check that skips the job scheduling exists on DBS only.
+
+For reference, or for a deployment where the template is not usable, this is what gets contributed:
 
 ```xml
 <!-- MongoDB -->
@@ -132,7 +152,7 @@ The mapping is applied when an index is created, so on an existing deployment yo
 </extension>
 ```
 
-Both forms are needed: `imgh:bands` suppresses the text extraction, `imgh:bands/*` suppresses the dirty-path trigger that schedules the job. Match the repository name to your own, and keep the `<index>` name as shown: it has to match the one declared by the Nuxeo template, otherwise the contribution adds a second index instead of merging into the existing one.
+Both `<excludeField>` entries are needed: `imgh:bands` suppresses the text extraction, `imgh:bands/*` suppresses the dirty-path trigger that schedules the job. Keep the `<index>` name as shown, it is not the same on the two backends: it has to match the one declared by the Nuxeo template, otherwise the contribution adds a second index instead of merging into the existing one.
 
 ## How to Build and Deploy
 

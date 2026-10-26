@@ -1,0 +1,67 @@
+<#escape x as x?xml>
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.fulltext.exclude">
+
+  <!--
+    imgh:bands holds opaque search keys. Nuxeo indexes every string property of every schema into
+    the repository fulltext, so without this the keys land in ecm:fulltextSimple, and every hash
+    store marks the document dirty for fulltext and schedules a FulltextExtractorWork.
+
+    Two excludeField entries, two different consumers, both needed:
+      imgh:bands    StringsExtractor tests an ArrayProperty at its own path, with no trailing /*,
+                    so this is the one that suppresses the text extraction.
+      imgh:bands/*  DirtyPathsFinder appends /* for arrays, and the dirty path is matched against
+                    indexesByPropPathExcludedSimple, so this is the one that suppresses the work
+                    scheduling. That check is DBS only, VCS gets the extraction filtering alone.
+
+    The contribution is purely additive: excludeField sets are unioned by FulltextDescriptor.merge
+    and every scalar is merged with getIfNull, so the database template keeps its own pool, cache,
+    analyzer, flags and its own exclusions. Being a union, it is also order independent, which is
+    why there is no <require> here, unlike the search mapping template whose merge is directional.
+    Nothing else is declared on purpose: restating an attribute would make us fight the template.
+
+    The index element must match the one shipped by the database template or a second index is
+    created instead of merging into the existing one. DBS declares it unnamed, VCS names it
+    "default". Names are compared before the null name is defaulted, so unnamed and "default" do
+    not match each other.
+
+    db2 is excluded from the VCS branch: it sets nuxeo.db.type but includes the "common" template
+    rather than "common-sql", so it has no repository contribution to merge into and ours would be
+    the only one, creating a repository with no datasource.
+
+    The exclusions are read when the repository is initialised, so this needs a restart, and
+    already extracted fulltext values stay until the documents are saved again.
+  -->
+
+<#if (nuxeo.labs.images.dup.fulltext.exclude)! == "true">
+<#if (nuxeo.db.type)! == "mongodb">
+  <!-- MongoDB and any other DBS backend -->
+  <extension target="org.nuxeo.ecm.core.storage.mongodb.MongoDBRepositoryService" point="repository">
+    <repository name="${nuxeo.labs.images.dup.fulltext.repository}">
+      <fulltext>
+        <index> <!-- name="default" implied, must stay unnamed to merge -->
+          <excludeField>imgh:bands</excludeField>
+          <excludeField>imgh:bands/*</excludeField>
+        </index>
+      </fulltext>
+    </repository>
+  </extension>
+<#elseif (nuxeo.db.type)?has_content && (nuxeo.db.type)! != "db2">
+  <!-- PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, H2: every VCS backend -->
+  <extension target="org.nuxeo.ecm.core.storage.sql.RepositoryService" point="repository">
+    <repository name="${nuxeo.labs.images.dup.fulltext.repository}">
+      <indexing>
+        <fulltext>
+          <index name="default"> <!-- must be named to merge -->
+            <excludeField>imgh:bands</excludeField>
+            <excludeField>imgh:bands/*</excludeField>
+          </index>
+        </fulltext>
+      </indexing>
+    </repository>
+  </extension>
+</#if>
+</#if>
+
+</component>
+</#escape>

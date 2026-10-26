@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.test.fulltext.exclude">
+
+  <!--
+    Test counterpart of the VCS branch of the marketplace template, on the test repository.
+    No <require>: excludeField sets are unioned by FulltextDescriptor.merge, so the merge is
+    order independent. The index name must stay "default", matching the one the shipped
+    common-sql template declares in every one of its branches.
+  -->
+  <extension target="org.nuxeo.ecm.core.storage.sql.RepositoryService" point="repository">
+    <repository name="test">
+      <indexing>
+        <fulltext>
+          <index name="default">
+            <excludeField>imgh:bands</excludeField>
+            <excludeField>imgh:bands/*</excludeField>
+          </index>
+        </fulltext>
+      </indexing>
+    </repository>
+  </extension>
+
+</component>

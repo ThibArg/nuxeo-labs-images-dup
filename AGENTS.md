@@ -79,7 +79,7 @@ Cross-checked against the opensearch1 sources plus the private `nuxeo-opensearch
   the three satisfies the plugin.
 - `maxCandidates` default (10000) sits exactly on the `max_result_window` default.
 
-## Fulltext: two independent layers, only one is fixed here
+## Fulltext: two independent layers, both fixed here
 
 Band keys are opaque strings (`f2eabf4f:0:cb94`). They can leak into **two unrelated** fulltext indexes.
 Fixing one does nothing for the other: `ecm:fulltextSimple` is never shipped to the search engine
@@ -88,7 +88,15 @@ Fixing one does nothing for the other: `ecm:fulltextSimple` is never shipped to 
 | Layer | Cause | Status |
 |---|---|---|
 | Engine `all_field` | `copy_to` on the dynamic `strings` template | **fixed**, mapping override |
-| Repository `ecm:fulltextSimple` | Nuxeo indexes every string property of every schema | **not fixed**, documented in README |
+| Repository `ecm:fulltextSimple` | Nuxeo indexes every string property of every schema | **fixed**, `<excludeField>` |
+
+Both fixes ship in the **same** auto-activated template, `install/templates/nuxeo-labs-images-dup/`, one
+`.nxftl` each under `nxserver/config/`. `assembly.xml` activates it with `<config addtemplate=.../>`, so
+the admin configures nothing. Output file names must keep the `-config.xml` suffix,
+`OSGiRuntimeService.loadConfig` deploys nothing else, and must never be `default-repository-config.xml`,
+which would overwrite the database template's own output.
+
+### Engine mapping (`imagehash-search-mapping-config.xml.nxftl`)
 
 - The `strings` template carrying `copy_to: "all_field"` and the `IndexConfig.merge()` logic are
   **identical on all three stacks**, down to the line numbers.
@@ -127,11 +135,55 @@ Fixing one does nothing for the other: `ecm:fulltextSimple` is never shipped to 
   `mvn clean install` depend on `packages.nuxeo.com/maven-private` and, for elasticsearch9, on a Docker
   container — unacceptable for a repository meant to be public. A `RunnerFeature` cannot soften this:
   Maven resolves dependencies before any test code runs. The README states the support level instead.
-- **Repository fulltext is still polluted.** Beyond noise, writing `imgh:bands` marks the path dirty and
-  schedules an extra `FulltextExtractorWork` per hash store. `store()` disables versioning, DC, audit and
-  notifications but cannot disable this. The `<excludeField>` cure is deployment-specific (different
-  nesting for DBS vs VCS, `<index>` name must match the shipped template) so it is documented in the
-  README rather than shipped.
+- **Repository fulltext is a separate problem**, fixed by the other `.nxftl`, see below. Beyond noise,
+  writing `imgh:bands` marks the path dirty and schedules an extra `FulltextExtractorWork` per hash
+  store; `store()` disables versioning, DC, audit and notifications but cannot disable that.
+
+### Repository fulltext (`imagehash-fulltext-exclude-config.xml.nxftl`)
+
+- **Branches on `nuxeo.db.type`**, the only backend discriminator visible to FreeMarker. Beware the
+  values: H2 is **`default`**, never `h2`, and MariaDB reports **`mysql`**. `nuxeo.dbtemplate`,
+  `nuxeo.core.config` and `nuxeo.template.basedir` do **not** exist; `nuxeo.templates` lists only what
+  `nuxeo.conf` names, not the `nuxeo.template.includes` chain. Ordering is a non-issue:
+  `ConfigurationGenerator.loadConfiguration()` loads every template's `nuxeo.defaults` before
+  `parseAndCopy()` renders any `.nxftl`.
+- **No `<require>` here, unlike the mapping template, and this asymmetry is deliberate.**
+  `FulltextDescriptor.merge()` unions `excludeFields` (`FulltextDescriptor.java:78-87`) and
+  `DescriptorRegistry.merge()` folds scalars with `getIfNull`, so the contribution is order independent
+  and cannot clobber the database template. A `<require>` would buy nothing and leave the component
+  `Pending` on a stack whose repository component is named differently.
+- **Contribute nothing but `<excludeField>`.** Restating `disabled`, `storedInBlob`, `analyzer`,
+  `<pool>`, `<cache>` and so on turns last-wins against the database template.
+- **The `<index>` key differs per backend and names are compared before `null` is defaulted to
+  `"default"`** (`FulltextConfigurationFactory.java:88` runs after the merge). DBS must stay **unnamed**
+  (`templates/mongodb/.../default-repository-config.xml.nxftl:16`), VCS must be
+  **`name="default"`** (`templates/common-sql/...:26`, same in every branch). A mismatch silently
+  appends a second index, which on VCS is a DDL change (`Model.java:1392-1413`).
+- **Both `excludeField` forms are required, for two different consumers.** `imgh:bands` stops the
+  extraction, because `StringsExtractor.findStrings` tests an `ArrayProperty` at its bare path
+  (`StringsExtractor.java:95-105`); `imgh:bands/*` stops the job scheduling, because `DirtyPathsFinder`
+  appends `/*` for arrays and the result is looked up in `indexesByPropPathExcludedSimple`
+  (`DBSTransactionState.java:1440-1469`). **That second check is DBS only**, VCS gets extraction
+  filtering alone. Both paths resolve through `SchemaManagerImpl.getField` (`/*` →
+  `resolveSubField(listType, null, true)`), so neither logs "Ignoring unknown property".
+- **`db2` is excluded on purpose**: it sets `nuxeo.db.type=db2` but its `nuxeo.template.includes` is
+  `common`, not `common-sql`, so it has no repository contribution to merge into.
+- **`nuxeo.labs.images.dup.fulltext.repository` exists because the descriptor id *is* the repository
+  name.** On a deployment whose repository is renamed, a hardcoded `name="default"` registers a second,
+  bare descriptor that the service tries to instantiate with no datasource. Same reason the exclusion
+  cannot ship as a plain bundle contribution: `nuxeo-core-storage-mongodb` is in `nuxeo-nxr-server` even
+  on a VCS deployment, so a bundle carrying both forms would create a phantom MongoDB repository
+  everywhere. The template branch is mandatory, not a convenience.
+- **Rendering was verified empirically** over ten property sets (no DB template, mongodb, postgresql,
+  default/H2, mssql, oracle, mysql, db2, `exclude=false`, renamed repository); each emitted exactly the
+  expected extension, and the inert cases still emit a well-formed `<component>`, not an empty file.
+- `TestFulltextExclusion` is the regression test, VCS shape on the default H2 run, asserting on
+  `FulltextConfiguration` rather than on a search because the H2 test repository sets
+  `searchDisabled="true"`. It **did fail** (2 of 3) before the contribution was deployed. On
+  `-Dnuxeo.test.core=mongodb` the class-level `IgnoreIfNotVCSRepository` fires **before** `@Deploy`
+  (verified: 0.3 s, no runtime started), so the VCS contribution is never registered on a DBS run.
+  The DBS shape stays untested.
+
 
 ## Testing
 
@@ -160,6 +212,9 @@ Fixing one does nothing for the other: `ecm:fulltextSimple` is never shipped to 
   listener and runs the search-indexing waiter installed by `BaseCoreSearchFeature`. Without it, freshly
   stored hashes are not searchable.
 - Test images are generated, not fixtures. `TestImages.sample(seed, w, h)` is deterministic per seed.
+- `TestFulltextExclusion` uses `AutomationFeature`, not `CoreFeature`: the class `@Deploy`s the whole
+  bundle so the test contribution can be resolved from it, and `CoreFeature` alone leaves
+  `imagehash-operations-contrib.xml` as `Missing: 1` in the startup banner.
 
 ## Architecture gotchas
 
