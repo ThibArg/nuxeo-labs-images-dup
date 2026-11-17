@@ -116,7 +116,7 @@ which would overwrite the database template's own output.
 hand-written counterparts: `src/test/resources/OSGI-INF/test-opensearch-mapping-contrib.xml` (index
 `nxutest`) and `test-fulltext-exclude-contrib.xml` (repository `test`). The README also reproduces the
 fulltext XML. A change to a template that is not mirrored there is untested. Adding a string property to
-the `imagehash` schema means touching all of them: the six mapping blocks, both fulltext branches, the
+the `imagehash` schema means touching all of them: the mapping macro, both fulltext branches, the
 two test contributions and the README. `TestFulltextExclusion` pins the exact set of excluded `imgh:*`
 paths.
 
@@ -128,19 +128,27 @@ paths.
   descriptor has `append="true"`; in the other direction `extraMappingContents` is silently dropped.
   Every block declares `<require>` on the component holding the base mapping. Remove it and the
   override vanishes without any error.
-- Six `<#if>` blocks, blue and green for opensearch1, opensearch2 and elasticsearch9, each guarded by its
+- **One `mapping` macro, called six times** (review finding L7): blue and green for opensearch1,
+  opensearch2 and elasticsearch9. It takes the index name, the component to `<require>` and the target
+  component, and emits nothing when the index name is empty. Two FreeMarker traps: the argument must be
+  written `((a.b.c)!)`, with the outer parentheses, or `!` swallows the next parameter name as its
+  default value; and the macro must stay inside `<#escape>`, which is lexical. Each call is guarded by its
   own `nuxeo.search.client.{default,green}.<stack>.index.name` property.
 - **Why guarding on an absent property is safe.** `TextTemplate` builds the FreeMarker model as a nested
   map by splitting dotted keys (`TextTemplate.java:382-416`), so a property from a template that was
-  never activated is simply missing. The parenthesised form `(a.b.c)?has_content` covers a missing
-  *intermediate* step; Nuxeo relies on the same mechanism across packages in
+  never activated is simply missing. The parenthesised form `(a.b.c)!` covers a missing
+  *intermediate* step and yields an empty string, which the macro tests with `?has_content`; Nuxeo relies on the same mechanism across packages in
   `opensearch1-search-client-config.xml.nxftl:7`, which guards on `(nuxeo.opensearch1.embed.enabled)!`,
   a property defined only by the separate opensearch1-embed package. `nuxeo.search.client.default` is
   always a Map because `common-base/nuxeo.defaults:150-151` defines `.name` and `.scroller.index.name`.
 - **Rendering was verified empirically**, not inferred: the template was run through `TextTemplate` with
   the property sets of seven deployments (no engine, each stack alone, green empty, blue+green,
-  OS1 -> ES9 migration) and emitted exactly the expected blocks. Re-run that check if the guards change.
-- Because the `<require>` sits inside its `<#if>`, only installed stacks emit one, so the component
+  OS1 -> ES9 migration) and emitted exactly the expected blocks. It was run again when the six blocks
+  became a macro, with an eighth set whose index name holds XML special characters: every output parsed
+  to the same requires, targets, index names and mapping as before. Re-run that check if the guards or
+  the macro change; it needs a throwaway `main` calling `new TextTemplate(props).processFreemarker(in,
+  out)` on the test classpath, nothing in the repository does it.
+- Because the `<require>` sits inside the `<#if>` of the macro, only installed stacks emit one, so the component
   always resolves. **It is a single component though**, so a `<require>` that cannot resolve would take
   all the blocks down with it; that needs an index-name property set without the matching package
   installed, and shows up as `Pending` in the startup banner.
