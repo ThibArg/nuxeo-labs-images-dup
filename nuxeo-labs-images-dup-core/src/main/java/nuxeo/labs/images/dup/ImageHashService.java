@@ -116,6 +116,7 @@ public interface ImageHashService {
      * Duplicate detection requires a search engine client (OpenSearch or Elasticsearch). When the repository client
      * is the one configured, the hash is still stored and the detection is skipped. The same goes when the search
      * fails: the failure is logged, not thrown, so that it cannot roll back the hash saved in the same transaction.
+     * The detection is also skipped when the configuration disables it, see {@link #detectDuplicates}.
      * <p>
      * The hash properties are secured: the calling thread must be logged in as an administrator or as the system
      * user, whatever the principal of the session.

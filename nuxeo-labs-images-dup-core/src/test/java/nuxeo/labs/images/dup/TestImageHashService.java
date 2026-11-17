@@ -436,6 +436,26 @@ public class TestImageHashService {
         assertEquals(2, DuplicatedImageCaptureListener.getEvents().size());
     }
 
+    /** With the automatic detection switched off, pictures are still hashed, and the bulk action still detects. */
+    @Test
+    @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-detection-disabled-contrib.xml")
+    public void testDetectionCanBeDisabled() throws InterruptedException {
+        var first = createPicture("/", "first", original);
+        viewsGenerated(first);
+        var resized = createPicture("/", "resized", TestImages.resize(original, 280, 210));
+        viewsGenerated(resized);
+
+        assertTrue(session.getDocument(resized.getRef()).hasFacet(IMAGE_HASH_FACET));
+        assertTrue("no event when the detection is disabled", DuplicatedImageCaptureListener.getEvents().isEmpty());
+        // the explicit search and the second pass are not concerned
+        assertEquals(Set.of(first.getId()), ids(service.findSimilar(resized, session.getPrincipal(), null, null, null)));
+        var commandId = bulkService.submit(new BulkCommand.Builder(DetectImageDuplicatesAction.ACTION_NAME,
+                "SELECT * FROM Picture", session.getPrincipal().getName()).repository(session.getRepositoryName())
+                                                                           .build());
+        assertTrue(bulkService.await(commandId, Duration.ofSeconds(60)));
+        assertEquals(2, DuplicatedImageCaptureListener.getEvents().size());
+    }
+
     /** The image reader throws a runtime exception on the first view, not an {@link IOException}. */
     @Test
     public void testUnreadableViewFallsBackToNextView() {

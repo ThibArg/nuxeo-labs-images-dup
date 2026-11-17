@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.test.detection.disabled">
+
+  <require>nuxeo.labs.images.dup.ImageHashService</require>
+
+  <extension target="nuxeo.labs.images.dup.ImageHashService" point="configuration">
+    <configuration>
+      <detectionEnabled>false</detectionEnabled>
+    </configuration>
+  </extension>
+
+</component>

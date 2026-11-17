@@ -160,7 +160,8 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
     @Override
     public void updateHashAndDetectDuplicates(CoreSession session, DocumentModel doc, NuxeoPrincipal principal) {
         var computed = compute(doc);
-        if (computed == null || !store(session, doc, computed) || computed.degenerate()) {
+        if (computed == null || !store(session, doc, computed) || computed.degenerate()
+                || !config.isDetectionEnabled()) {
             return;
         }
         // the hash is stored even without a working search engine, only the detection is skipped

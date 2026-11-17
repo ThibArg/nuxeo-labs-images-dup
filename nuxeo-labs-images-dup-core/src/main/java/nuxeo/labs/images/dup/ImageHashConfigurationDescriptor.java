@@ -51,6 +51,13 @@ public class ImageHashConfigurationDescriptor implements Descriptor {
     public static final int DEFAULT_THRESHOLD = 8;
 
     /**
+     * Whether duplicates are searched when a picture is hashed after its views generation, by default.
+     *
+     * @since 2025.1.0
+     */
+    public static final boolean DEFAULT_DETECTION_ENABLED = true;
+
+    /**
      * Default band-search radius for duplicate detection.
      *
      * @since 2025.1.0
@@ -91,6 +98,9 @@ public class ImageHashConfigurationDescriptor implements Descriptor {
     @XNode("threshold")
     protected Integer threshold;
 
+    @XNode("detectionEnabled")
+    protected Boolean detectionEnabled;
+
     @XNode("detectionRadius")
     protected Integer detectionRadius;
 
@@ -123,6 +133,7 @@ public class ImageHashConfigurationDescriptor implements Descriptor {
         var merged = new ImageHashConfigurationDescriptor();
         merged.views = other.views != null && !other.views.isEmpty() ? other.views : views;
         merged.threshold = firstNonNull(other.threshold, threshold);
+        merged.detectionEnabled = firstNonNull(other.detectionEnabled, detectionEnabled);
         merged.detectionRadius = firstNonNull(other.detectionRadius, detectionRadius);
         merged.detectionOrientations = firstNonNull(other.detectionOrientations, detectionOrientations);
         merged.searchRadius = firstNonNull(other.searchRadius, searchRadius);
@@ -151,6 +162,16 @@ public class ImageHashConfigurationDescriptor implements Descriptor {
      */
     public int getThreshold() {
         return Math.clamp(requireNonNullElse(threshold, DEFAULT_THRESHOLD), 0, Long.SIZE);
+    }
+
+    /**
+     * Whether duplicates are searched when a picture is hashed after its views generation. When {@code false} the
+     * hash is still stored, and the {@code detectImageDuplicates} bulk action still detects.
+     *
+     * @since 2025.1.0
+     */
+    public boolean isDetectionEnabled() {
+        return requireNonNullElse(detectionEnabled, DEFAULT_DETECTION_ENABLED);
     }
 
     /**

@@ -102,6 +102,7 @@ Contribute to the `configuration` extension point of `nuxeo.labs.images.dup.Imag
         <view>OriginalJpeg</view>
       </views>
       <threshold>8</threshold>
+      <detectionEnabled>true</detectionEnabled>
       <detectionRadius>1</detectionRadius>
       <detectionOrientations>false</detectionOrientations>
       <searchRadius>1</searchRadius>
@@ -113,6 +114,8 @@ Contribute to the `configuration` extension point of `nuxeo.labs.images.dup.Imag
 ```
 
 `threshold` is shared by both paths, but the radius and the orientations are split: `detectionRadius` and `detectionOrientations` apply to the automatic detection that runs after picture views generation, `searchRadius` and `searchOrientations` to the `ImageHash.FindSimilar` operation, the Similar Images tab and its page provider. The defaults keep the automatic path cheaper than the explicit search.
+
+`detectionEnabled` set to `false` switches the automatic detection off: pictures are still hashed after their views generation, but no search runs and no `duplicatedImage` event is fired. This is meant for a mass import, where the automatic detection costs one search per picture on a search cluster busy indexing, and misses the copies imported together anyway. The recipe is: import with `detectionEnabled` at `false`, wait for the indexing to catch up, then run the `detectImageDuplicates` bulk action on the imported pictures. The explicit search and that bulk action ignore this setting, and both keep using `detectionRadius` and `detectionOrientations` or their search counterparts.
 
 The first available view is used for hashing. Changing the first view changes the hash signature; run the `computeImageHash` bulk action to update existing documents.
 

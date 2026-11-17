@@ -322,6 +322,11 @@ paths.
   - Known and accepted: the event principal is the user of the command, a pair is reported from both
     sides, and pairs already reported are reported again.
   - The latency race itself is reasoned from the sources, never reproduced here.
+- **`<detectionEnabled>false</detectionEnabled>` skips the search in `updateHashAndDetectDuplicates`
+  only** (review finding M6): the hash is still stored, `findSimilar` and `detectImageDuplicates` ignore
+  the switch. The report also proposes a context-data flag set by an importer on a document: **not
+  implemented, it cannot work**. Context data is not persisted, and `pictureViewsGenerationDone` is
+  fired later, in another transaction, by `RecomputeViewsAction` on a document it loads itself.
 - **Per-document failure isolation, three places (review finding M3).** `readImage` catches
   `IOException | RuntimeException` per view: the JDK PNG reader throws `IllegalArgumentException` on some
   headers, and a blob provider can throw unchecked. The loops of `ImageHashListener` and

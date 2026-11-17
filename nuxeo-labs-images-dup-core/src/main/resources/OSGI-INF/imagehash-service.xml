@@ -28,7 +28,10 @@
                Keep it close to 4 * radius + 3 (3, 7 or 11): beyond that distance a pair is found
                only by luck, so raising the threshold alone widens what is accepted, not what is found -->
           <threshold>8</threshold>
-          <!-- Detection after picture views generation. Radius (0-2) per 16-bit band: all images within
+          <!-- Detection after picture views generation. Set to false to only store the hash, for instance
+               during a mass import, then detect with the bulk action "detectImageDuplicates" -->
+          <detectionEnabled>true</detectionEnabled>
+          <!-- Radius (0-2) per 16-bit band of that detection, and of the bulk action: all images within
                a distance of 3 (radius 0), 7 (radius 1) or 11 (radius 2) are guaranteed to be found -->
           <detectionRadius>1</detectionRadius>
           <!-- Also detect rotated (90/180/270) and mirrored images -->
