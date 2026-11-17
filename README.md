@@ -5,7 +5,7 @@
 >
 > Once ready this plugin should be forked to [nuxeo-sandbox](https://github.com/nuxeo-sandbox) repository, and current repo will be archived.
 >
-> But it can take time to be ready, there is a lot of real-life chek to perform :-)
+> But it can take time to be ready, there is a lot of real-life check to perform :-)
 
 Nuxeo LTS 2025 plugin for detecting near-duplicate images on documents with the Picture facet. It computes and stores a perceptual hash when picture views are generated, then searches for similar images while respecting the current user's permissions.
 

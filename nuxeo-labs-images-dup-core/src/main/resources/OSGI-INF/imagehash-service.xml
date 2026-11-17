@@ -36,7 +36,7 @@
           <detectionRadius>1</detectionRadius>
           <!-- Also detect rotated (90/180/270) and mirrored images -->
           <detectionOrientations>false</detectionOrientations>
-          <!-- Same, for the ImageHash.FindSimilar operation -->
+          <!-- Same, for the ImageHash.FindSimilar operation, the Similar Images tab and its page provider -->
           <searchRadius>1</searchRadius>
           <searchOrientations>true</searchOrientations>
           <!-- Max candidates fetched per search (must not exceed the search index max result window) -->

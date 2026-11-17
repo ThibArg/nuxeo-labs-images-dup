@@ -2,7 +2,7 @@ Bundle-ActivationPolicy: lazy
 Bundle-ClassPath: .
 Manifest-Version: 1.0
 Bundle-Vendor: nuxeo.labs.images.dup
-Bundle-Version: 1.0.0
+Bundle-Version: 2025.1.0
 Bundle-Name: nuxeo-labs-images-dup-core
 Bundle-ManifestVersion: 2
 Bundle-SymbolicName: nuxeo.labs.images.dup.nuxeo-labs-images-dup-core;singleton=true

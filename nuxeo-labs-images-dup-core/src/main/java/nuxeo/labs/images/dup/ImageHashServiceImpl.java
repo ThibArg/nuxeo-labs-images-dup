@@ -47,7 +47,6 @@ import jakarta.annotation.Nullable;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.nuxeo.ecm.core.api.Blob;
 import org.nuxeo.ecm.core.api.CoreSession;
 import org.nuxeo.ecm.core.api.DocumentModel;
 import org.nuxeo.ecm.core.api.NuxeoException;
@@ -61,7 +60,6 @@ import org.nuxeo.ecm.core.search.SearchIndex;
 import org.nuxeo.ecm.core.search.SearchQuery;
 import org.nuxeo.ecm.core.search.SearchService;
 import org.nuxeo.ecm.platform.dublincore.listener.DublinCoreListener;
-import org.nuxeo.ecm.platform.picture.api.PictureView;
 import org.nuxeo.ecm.platform.picture.api.adapters.MultiviewPicture;
 import org.nuxeo.runtime.api.Framework;
 import org.nuxeo.runtime.model.ComponentContext;
@@ -104,6 +102,9 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
             + " nuxeo-search-client-elasticsearch9";
 
     protected static final int SC_BAD_REQUEST = 400;
+
+    /** Context data read by the notification listener; Nuxeo has no constant for it. */
+    protected static final String DISABLE_NOTIFICATION_SERVICE = "disableNotificationService";
 
     protected ImageHashConfigurationDescriptor config;
 
@@ -383,7 +384,7 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
         doc.putContextData(VersioningService.DISABLE_AUTO_CHECKOUT, Boolean.TRUE);
         doc.putContextData(DublinCoreListener.DISABLE_DUBLINCORE_LISTENER, Boolean.TRUE);
         doc.putContextData(CoreSession.DISABLE_AUDIT_LOGGER, Boolean.TRUE);
-        doc.putContextData("disableNotificationService", Boolean.TRUE);
+        doc.putContextData(DISABLE_NOTIFICATION_SERVICE, Boolean.TRUE);
         doc.putContextData(DISABLE_PICTURE_VIEWS_GENERATION_LISTENER, Boolean.TRUE);
         session.saveDocument(doc);
         return true;

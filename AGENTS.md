@@ -37,7 +37,7 @@ Everything funnels into `ImageHashServiceImpl`:
 ## Commands
 
 ```bash
-mvn clean install                                        # build + all tests + marketplace zip (~40 s warm)
+mvn clean install                                        # build + all tests + marketplace zip (~55 s warm)
 mvn -o clean install                                     # same, offline, once dependencies are cached
 mvn -pl nuxeo-labs-images-dup-core test                  # tests only
 mvn -pl nuxeo-labs-images-dup-core test -Dtest=TestPHash
@@ -45,7 +45,7 @@ mvn -pl nuxeo-labs-images-dup-core test -Dtest='TestPHash#testOrientations'
 ```
 
 - `TestPHash` and `TestHashBands` are plain unit tests (< 1 s). `TestImageHashService` boots Nuxeo plus an
-  embedded OpenSearch node (~30 s), `TestFulltextExclusion` ~5 s.
+  embedded OpenSearch node (~45 s), `TestFulltextExclusion` ~5 s.
 - `ERROR ... NUXEO INSTANCE REGISTRATION FILE IS MISSING` in the test output is harmless.
 - Run `mvn clean install` before committing Java/XML changes (not needed for README / AGENTS.md /
   `.gitignore`-only commits).
@@ -394,8 +394,8 @@ paths.
   made disjoint with a `NOT IN`: a document can come back in a later tier, it is deduplicated by id and
   only wastes a little of that tier's limit.
 - `SearchQuery` default limit is 10 — always set `.limit(...)` explicitly.
-- `PICTURE_VIEWS_GENERATION_DONE_EVENT` is imported from the **deprecated** `PictureViewsGenerationWork`.
-  The same `"pictureViewsGenerationDone"` constant exists on the non-deprecated `RecomputeViewsAction`.
+- `PICTURE_VIEWS_GENERATION_DONE_EVENT` is imported from the nested
+  `RecomputeViewsAction.RecomputeViewsComputation`, not from the deprecated `PictureViewsGenerationWork`.
 
 ## Web UI
 
