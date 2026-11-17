@@ -13,7 +13,7 @@ The duplicate search runs on a search engine client (OpenSearch or Elasticsearch
 
 ## How to Use
 
-Install the Marketplace package. New or updated Picture documents are hashed automatically after their picture views are generated. When a duplicate is detected, the plugin fires the `duplicatedImage` event on the picture, with two properties: `duplicates`, a map of duplicate document id to Hamming distance, closest first, and `duplicatesTruncated`, `true` when the list may be incomplete, see [Candidate Limit](#candidate-limit).
+Install the Marketplace package. New or updated Picture documents are hashed automatically after their picture views are generated. When a duplicate is detected, the plugin fires the `duplicatedImage` event on the picture, with three properties: `duplicates`, a map of duplicate document id to Hamming distance, closest first and limited to the 100 closest, `duplicatesCount`, the number of duplicates found, and `duplicatesTruncated`, `true` when the search itself may be incomplete, see [Candidate Limit](#candidate-limit). The duplicates listed are those readable by the user who triggered the views generation: a listener forwarding the list to someone else may disclose documents that person cannot read.
 
 To search for similar images, call the `ImageHash.FindSimilar` Automation operation with a Picture document as input. Optional parameters are:
 

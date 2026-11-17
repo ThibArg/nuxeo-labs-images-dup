@@ -363,6 +363,8 @@ paths.
 - `ImageHashListener` writes with `CoreInstance.getCoreSessionSystem(...)` so the hash is stored even
   when the triggering user cannot write the document, but the duplicate **search** uses the triggering
   principal, so the fired event only lists duplicates that user can read.
+- The `duplicatedImage` event lists the `MAX_EVENT_DUPLICATES` (100) closest duplicates only, with the
+  total in `duplicatesCount` (review finding L4): the map used to hold up to `maxCandidates` ids.
 - `maxCandidates` (default 10000) is a page limit, not a total, and must stay <= the search index
   `max_result_window`. **Reaching it is reported, never silent** (review finding H1): `search()` returns
   `SimilarImages(images, truncated)`, and every entry point passes the flag on: the

@@ -445,9 +445,13 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
     protected void fireDuplicatedImage(CoreSession session, DocumentModel doc, NuxeoPrincipal principal,
             SimilarImages duplicates) {
         var distances = new LinkedHashMap<String, Integer>();
-        duplicates.images().forEach(duplicate -> distances.put(duplicate.docId(), duplicate.distance()));
+        duplicates.images()
+                  .stream()
+                  .limit(MAX_EVENT_DUPLICATES)
+                  .forEach(duplicate -> distances.put(duplicate.docId(), duplicate.distance()));
         var ctx = new DocumentEventContext(session, principal, doc);
         ctx.setProperty(DUPLICATES_EVENT_PROPERTY, distances);
+        ctx.setProperty(DUPLICATES_COUNT_EVENT_PROPERTY, duplicates.images().size());
         ctx.setProperty(DUPLICATES_TRUNCATED_EVENT_PROPERTY, duplicates.truncated());
         Framework.getService(EventService.class).fireEvent(ctx.newEvent(DUPLICATED_IMAGE_EVENT));
     }

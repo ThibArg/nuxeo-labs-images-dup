@@ -68,11 +68,33 @@ public interface ImageHashService {
     String DUPLICATED_IMAGE_EVENT = "duplicatedImage";
 
     /**
-     * Event property, a {@code LinkedHashMap<String, Integer>}: duplicate document id to distance, closest first.
+     * Event property, a {@code LinkedHashMap<String, Integer>}: duplicate document id to distance, closest first, at
+     * most {@link #MAX_EVENT_DUPLICATES} of them.
+     * <p>
+     * The duplicates listed are those readable by the principal of the event, who is the user having triggered the
+     * views generation, or the user of the command for the {@code detectImageDuplicates} bulk action. A listener
+     * forwarding this list to someone else, the creator of the document for instance, may disclose documents that
+     * person cannot read.
      *
      * @since 2025.1.0
      */
     String DUPLICATES_EVENT_PROPERTY = "duplicates";
+
+    /**
+     * Event property, an {@code Integer}: the number of duplicates found, which can exceed the number of entries of
+     * {@link #DUPLICATES_EVENT_PROPERTY}.
+     *
+     * @since 2025.1.0
+     */
+    String DUPLICATES_COUNT_EVENT_PROPERTY = "duplicatesCount";
+
+    /**
+     * Maximum number of duplicates listed in an event: a very common image, a logo or a placeholder, has thousands,
+     * and events are serialized for asynchronous listeners.
+     *
+     * @since 2025.1.0
+     */
+    int MAX_EVENT_DUPLICATES = 100;
 
     /**
      * Event property, a {@code Boolean}: {@code true} if the detection reached the maximum number of candidates, in

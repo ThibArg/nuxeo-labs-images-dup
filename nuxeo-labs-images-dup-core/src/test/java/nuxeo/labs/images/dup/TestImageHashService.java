@@ -19,9 +19,11 @@
 package nuxeo.labs.images.dup;
 
 import static nuxeo.labs.images.dup.ImageHashService.BANDS_PROPERTY;
+import static nuxeo.labs.images.dup.ImageHashService.DUPLICATES_COUNT_EVENT_PROPERTY;
 import static nuxeo.labs.images.dup.ImageHashService.DUPLICATES_EVENT_PROPERTY;
 import static nuxeo.labs.images.dup.ImageHashService.DUPLICATES_TRUNCATED_EVENT_PROPERTY;
 import static nuxeo.labs.images.dup.ImageHashService.IMAGE_HASH_FACET;
+import static nuxeo.labs.images.dup.ImageHashService.MAX_EVENT_DUPLICATES;
 import static nuxeo.labs.images.dup.ImageHashService.PHASH_PROPERTY;
 import static nuxeo.labs.images.dup.ImageHashService.SIGNATURE_PROPERTY;
 import static nuxeo.labs.images.dup.pageprovider.SimilarImagesPageProvider.DISTANCE_CONTEXT_DATA;
@@ -468,6 +470,26 @@ public class TestImageHashService {
 
         var provider = similarImages(johnSession, Map.of(DOC_ID_PARAM, reference.getId()), 40, 0);
         assertEquals(Set.of(readable.getId()), docIds(provider.getCurrentPage()));
+    }
+
+    /** A very common image must not put thousands of ids in an event: the list is capped, the total is given. */
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testEventDuplicatesAreCapped() {
+        var reference = createPicture("/", "reference", original);
+        viewsGenerated(reference);
+        var hash = PHash.fromHex((String) session.getDocument(reference.getRef()).getPropertyValue(PHASH_PROPERTY));
+        for (var i = 0; i <= MAX_EVENT_DUPLICATES; i++) {
+            createHashed("same" + i, hash);
+        }
+        txFeature.nextTransaction();
+        viewsGenerated(createPicture("/", "copy", original));
+
+        var events = DuplicatedImageCaptureListener.getEvents();
+        assertEquals(1, events.size());
+        var ctx = events.getFirst().getContext();
+        assertEquals(MAX_EVENT_DUPLICATES, ((Map<String, Integer>) ctx.getProperty(DUPLICATES_EVENT_PROPERTY)).size());
+        assertEquals(MAX_EVENT_DUPLICATES + 2, ctx.getProperty(DUPLICATES_COUNT_EVENT_PROPERTY));
     }
 
     /** Out-of-range parameters are a client error, whatever the entry point. */
