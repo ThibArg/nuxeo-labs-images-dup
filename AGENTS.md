@@ -93,8 +93,10 @@ Cross-checked against the opensearch1 sources plus the private `nuxeo-opensearch
 
 ## Fulltext: two independent layers, both fixed here
 
-Band keys are opaque strings (`f2eabf4f:0:cb94`). They can leak into **two unrelated** fulltext indexes.
-Fixing one does nothing for the other: `ecm:fulltextSimple` is never shipped to the search engine
+The three `imgh:*` properties are technical strings: band keys (`f2eabf4f:0:cb94`), the hash in hex, and
+the signature (`phash64v1/Small`). **All three are excluded, never only `imgh:bands`**: the analyzed
+signature made a fulltext search for "small" return every hashed picture (review finding H2). They can
+leak into **two unrelated** fulltext indexes. Fixing one does nothing for the other: `ecm:fulltextSimple` is never shipped to the search engine
 (`DefaultIndexingJsonWriter.writeSystemProperties` emits only `binarytext`).
 
 | Layer | Cause | Status |
@@ -111,7 +113,10 @@ which would overwrite the database template's own output.
 **Each fix is duplicated, keep the copies in sync.** The templates are not loaded by tests, so tests run
 hand-written counterparts: `src/test/resources/OSGI-INF/test-opensearch-mapping-contrib.xml` (index
 `nxutest`) and `test-fulltext-exclude-contrib.xml` (repository `test`). The README also reproduces the
-fulltext XML. A change to a template that is not mirrored there is untested.
+fulltext XML. A change to a template that is not mirrored there is untested. Adding a string property to
+the `imagehash` schema means touching all of them: the six mapping blocks, both fulltext branches, the
+two test contributions and the README. `TestFulltextExclusion` pins the exact set of excluded `imgh:*`
+paths.
 
 ### Engine mapping (`imagehash-search-mapping-config.xml.nxftl`)
 
@@ -137,8 +142,12 @@ fulltext XML. A change to a template that is not mirrored there is untested.
   always resolves. **It is a single component though**, so a `<require>` that cannot resolve would take
   all the blocks down with it; that needs an index-name property set without the matching package
   installed, and shows up as `Pending` in the startup banner.
-- Mappings are applied **only at index creation**. Existing deployments need a drop + reindex.
-- Only opensearch1 is covered by a test (`testBandKeysAreNotIndexedInFulltext`, embedded node). The
+- Mappings are applied **only at index creation**. Existing deployments need a drop + reindex, including
+  those created by a build that mapped `imgh:bands` only.
+- `imgh:phash` and `imgh:signature` are mapped `keyword` with `ignore_above: 256`, the dynamic template
+  minus `copy_to`. The search reads `imgh:phash` from `_source`, so `ignore_above` cannot hide a hash.
+- Only opensearch1 is covered by a test (`testBandKeysAreNotIndexedInFulltext` and
+  `testHashAndSignatureAreNotIndexedInFulltext`, embedded node). The
   opensearch2 and elasticsearch9 blocks are built from verified source metadata but **not automatically
   tested**: the two clients are private SNAPSHOT artifacts, their OpenSearch jars conflict with
   opensearch1 on the classpath, and elasticsearch9 ships no embedded server.
@@ -153,8 +162,11 @@ fulltext XML. A change to a template that is not mirrored there is untested.
 
 ### Repository fulltext (`imagehash-fulltext-exclude-config.xml.nxftl`)
 
-- Beyond noise, writing `imgh:bands` marks the path dirty and schedules an extra `FulltextExtractorWork`
-  per hash store; `store()` disables versioning, DC, audit and notifications but cannot disable that.
+- Beyond noise, a hash store marks the written paths dirty and schedules an extra `FulltextExtractorWork`;
+  `store()` disables versioning, DC, audit and notifications but cannot disable that. The work is skipped
+  only when **every** dirty path is excluded (`DBSTransactionState.java:1440-1469` sets `dirtyStrings` on
+  the first one that is not), and `store()` writes the three properties together: excluding
+  `imgh:bands` alone never suppressed the work.
 - **Branches on `nuxeo.db.type`**, the only backend discriminator visible to FreeMarker. Beware the
   values: H2 is **`default`**, never `h2`, and MariaDB reports **`mysql`**. `nuxeo.dbtemplate`,
   `nuxeo.core.config` and `nuxeo.template.basedir` do **not** exist; `nuxeo.templates` lists only what
@@ -173,7 +185,9 @@ fulltext XML. A change to a template that is not mirrored there is untested.
   (`templates/mongodb/.../default-repository-config.xml.nxftl:16`), VCS must be
   **`name="default"`** (`templates/common-sql/...:26`, same in every branch). A mismatch silently
   appends a second index, which on VCS is a DDL change (`Model.java:1392-1413`).
-- **Both `excludeField` forms are required, for two different consumers.** `imgh:bands` stops the
+- `imgh:phash` and `imgh:signature` are scalars: one bare-path `<excludeField>` each serves both consumers
+  below.
+- **Both `excludeField` forms of the array are required, for two different consumers.** `imgh:bands` stops the
   extraction, because `StringsExtractor.findStrings` tests an `ArrayProperty` at its bare path
   (`StringsExtractor.java:95-105`); `imgh:bands/*` stops the job scheduling, because `DirtyPathsFinder`
   appends `/*` for arrays and the result is looked up in `indexesByPropPathExcludedSimple`
@@ -193,7 +207,8 @@ fulltext XML. A change to a template that is not mirrored there is untested.
   expected extension, and the inert cases still emit a well-formed `<component>`, not an empty file.
 - `TestFulltextExclusion` is the regression test, VCS shape on the default H2 run, asserting on
   `FulltextConfiguration` rather than on a search because the H2 test repository sets
-  `searchDisabled="true"`. It **did fail** (2 of 3) before the contribution was deployed. On
+  `searchDisabled="true"`. It **did fail** (2 of 3) before the contribution was deployed, and again
+  (3 of 4) before `imgh:phash` and `imgh:signature` were added. On
   `-Dnuxeo.test.core=mongodb` the class-level `IgnoreIfNotVCSRepository` fires **before** `@Deploy`
   (verified: 0.3 s, no runtime started), so the VCS contribution is never registered on a DBS run.
   The DBS shape stays untested.
@@ -209,8 +224,9 @@ fulltext XML. A change to a template that is not mirrored there is untested.
   `org.nuxeo.runtime:nuxeo-runtime-opensearch1-embed`.
 - The technical index is `nxutest` in tests, hence the separate
   `test-opensearch-mapping-contrib.xml`, which must be `@Deploy`ed explicitly.
-- `testBandKeysAreNotIndexedInFulltext` is the regression test for the mapping override. It **did fail**
-  before the fix, so if it ever passes trivially, check that the mapping is still being applied.
+- `testBandKeysAreNotIndexedInFulltext` and `testHashAndSignatureAreNotIndexedInFulltext` are the
+  regression tests for the mapping override. Both **did fail** before their fix, so if one ever passes
+  trivially, check that the mapping is still being applied.
 - To run against MongoDB instead of H2 (nothing in the plugin depends on it any more, the band query
   never reaches the repository): `docker run -d --rm -p 27017:27017 mongo:8` then
   `mvn -pl nuxeo-labs-images-dup-core test -Dnuxeo.test.core=mongodb`.

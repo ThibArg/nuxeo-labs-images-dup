@@ -18,9 +18,12 @@
  */
 package nuxeo.labs.images.dup;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import jakarta.inject.Inject;
 
@@ -40,12 +43,13 @@ import org.nuxeo.runtime.test.runner.FeaturesRunner;
 /**
  * Regression test for the repository fulltext exclusion shipped by the marketplace template.
  * <p>
- * Band keys are opaque strings, and Nuxeo indexes every string property of every schema into the repository fulltext.
- * The template contributes two {@code excludeField} entries, which serve two different consumers and are both needed:
- * {@code imgh:bands} suppresses the text extraction, because {@code StringsExtractor} tests an array property at its
- * own path with no trailing {@code /*}, while {@code imgh:bands/*} suppresses the work scheduling, because
- * {@code DirtyPathsFinder} appends {@code /*} for arrays. A wrong path, or an index name that does not match the one
- * declared by the database template, fails silently, hence this test.
+ * The three properties of the schema are technical strings, and Nuxeo indexes every string property of every schema
+ * into the repository fulltext. The template excludes all of them. The band keys need two {@code excludeField}
+ * entries, which serve two different consumers: {@code imgh:bands} suppresses the text extraction, because
+ * {@code StringsExtractor} tests an array property at its own path with no trailing {@code /*}, while
+ * {@code imgh:bands/*} suppresses the work scheduling, because {@code DirtyPathsFinder} appends {@code /*} for arrays.
+ * {@code imgh:phash} and {@code imgh:signature} are scalars, one entry each serves both. A wrong path, or an index
+ * name that does not match the one declared by the database template, fails silently, hence this test.
  * <p>
  * Asserts on the configuration rather than on a fulltext search, because the H2 test repository declares
  * {@code searchDisabled="true"}. VCS only: the deployed contribution targets the SQL repository service.
@@ -65,6 +69,8 @@ public class TestFulltextExclusion {
     @Inject
     protected CoreSession session;
 
+    protected static final Set<String> EXCLUDED = Set.of("imgh:bands", "imgh:bands/*", "imgh:phash", "imgh:signature");
+
     /**
      * @since 2025.1.0
      */
@@ -78,6 +84,20 @@ public class TestFulltextExclusion {
     }
 
     /**
+     * The signature is {@code <algorithm>/<view>}: left in fulltext, every hashed picture matches its view name.
+     *
+     * @since 2025.1.0
+     */
+    @Test
+    public void testHashAndSignatureAreExcludedFromRepositoryFulltext() {
+        var config = getFulltextConfiguration();
+        assertTrue("imgh:phash must be excluded",
+                config.indexesByPropPathExcludedSimple.containsKey("imgh:phash"));
+        assertTrue("imgh:signature must be excluded",
+                config.indexesByPropPathExcludedSimple.containsKey("imgh:signature"));
+    }
+
+    /**
      * The exclusion must not land on a second, unused index: the contribution has to merge into the index declared by
      * the database template, which is named {@code default} on every VCS backend.
      *
@@ -87,20 +107,24 @@ public class TestFulltextExclusion {
     public void testExclusionMergesIntoTheDefaultIndex() {
         var config = getFulltextConfiguration();
         assertTrue("the exclusion must be registered on the default index",
-                config.propPathsExcludedByIndexSimple.getOrDefault("default", Set.of())
-                      .containsAll(Set.of("imgh:bands", "imgh:bands/*")));
+                config.propPathsExcludedByIndexSimple.getOrDefault("default", Set.of()).containsAll(EXCLUDED));
     }
 
     /**
-     * Guards against an over-broad exclusion: the other properties of the schema must keep being indexed.
+     * Guards against an over-broad exclusion: only the properties of the imagehash schema are excluded.
      *
      * @since 2025.1.0
      */
     @Test
     public void testOtherPropertiesAreStillIndexed() {
         var config = getFulltextConfiguration();
-        assertTrue("imgh:phash must stay indexed", config.indexesByPropPathSimple.containsKey("imgh:phash"));
         assertTrue("dc:title must stay indexed", config.indexesByPropPathSimple.containsKey("dc:title"));
+        assertFalse("dc:title must not be excluded", config.indexesByPropPathExcludedSimple.containsKey("dc:title"));
+        var excluded = config.indexesByPropPathExcludedSimple.keySet()
+                                                             .stream()
+                                                             .filter(path -> path.startsWith("imgh:"))
+                                                             .collect(Collectors.toSet());
+        assertEquals(EXCLUDED, excluded);
     }
 
     protected FulltextConfiguration getFulltextConfiguration() {

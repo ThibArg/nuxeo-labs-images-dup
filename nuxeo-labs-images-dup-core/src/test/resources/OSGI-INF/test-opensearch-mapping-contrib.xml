@@ -4,7 +4,7 @@
   <!-- Must be merged after the base mapping, otherwise the append is dropped -->
   <require>org.nuxeo.ecm.core.search.opensearch1.test</require>
 
-  <!-- Test counterpart of the marketplace template, on the test technical index -->
+  <!-- Test counterpart of the marketplace template, on the test technical index: keep the mapping identical -->
   <extension target="org.nuxeo.runtime.opensearch1.OpenSearchComponent" point="index">
     <index name="nxutest">
       <mapping append="true">
@@ -13,6 +13,14 @@
             "imgh:bands": {
               "type": "keyword",
               "ignore_above": 32
+            },
+            "imgh:phash": {
+              "type": "keyword",
+              "ignore_above": 256
+            },
+            "imgh:signature": {
+              "type": "keyword",
+              "ignore_above": 256
             }
           }
         }

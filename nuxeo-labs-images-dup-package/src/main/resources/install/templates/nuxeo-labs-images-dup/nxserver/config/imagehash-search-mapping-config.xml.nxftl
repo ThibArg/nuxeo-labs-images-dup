@@ -3,10 +3,15 @@
 <component name="nuxeo.labs.images.dup.search.mapping">
 
   <!--
-    imgh:bands holds opaque search keys. The default dynamic mapping indexes every string with
-    copy_to="all_field", which pushes them into the fulltext field and makes them match fulltext
-    searches. An explicit property mapping takes precedence over the dynamic template and drops
-    copy_to, while keeping the field queryable as a keyword.
+    The three properties of the imagehash schema are technical strings: imgh:bands holds opaque
+    search keys, imgh:phash the hash in hexadecimal and imgh:signature "<algorithm>/<view>". The
+    default dynamic mapping indexes every string with copy_to="all_field", which pushes them into
+    the fulltext field and makes them match fulltext searches: with the signature analyzed, a
+    search for the view name ("small") returns every hashed picture. An explicit property mapping
+    takes precedence over the dynamic template and drops copy_to, while keeping the field queryable
+    as a keyword. imgh:phash and imgh:signature keep the ignore_above of the dynamic template.
+
+    The six blocks below carry the same mapping, keep them identical.
 
     One block per search client, each guarded by its own index name property. A stack that is not
     installed emits neither its <require> nor its <extension>, so the component still resolves;
@@ -34,6 +39,14 @@
             "imgh:bands": {
               "type": "keyword",
               "ignore_above": 32
+            },
+            "imgh:phash": {
+              "type": "keyword",
+              "ignore_above": 256
+            },
+            "imgh:signature": {
+              "type": "keyword",
+              "ignore_above": 256
             }
           }
         }
@@ -52,6 +65,14 @@
             "imgh:bands": {
               "type": "keyword",
               "ignore_above": 32
+            },
+            "imgh:phash": {
+              "type": "keyword",
+              "ignore_above": 256
+            },
+            "imgh:signature": {
+              "type": "keyword",
+              "ignore_above": 256
             }
           }
         }
@@ -72,6 +93,14 @@
             "imgh:bands": {
               "type": "keyword",
               "ignore_above": 32
+            },
+            "imgh:phash": {
+              "type": "keyword",
+              "ignore_above": 256
+            },
+            "imgh:signature": {
+              "type": "keyword",
+              "ignore_above": 256
             }
           }
         }
@@ -90,6 +119,14 @@
             "imgh:bands": {
               "type": "keyword",
               "ignore_above": 32
+            },
+            "imgh:phash": {
+              "type": "keyword",
+              "ignore_above": 256
+            },
+            "imgh:signature": {
+              "type": "keyword",
+              "ignore_above": 256
             }
           }
         }
@@ -110,6 +147,14 @@
             "imgh:bands": {
               "type": "keyword",
               "ignore_above": 32
+            },
+            "imgh:phash": {
+              "type": "keyword",
+              "ignore_above": 256
+            },
+            "imgh:signature": {
+              "type": "keyword",
+              "ignore_above": 256
             }
           }
         }
@@ -128,6 +173,14 @@
             "imgh:bands": {
               "type": "keyword",
               "ignore_above": 32
+            },
+            "imgh:phash": {
+              "type": "keyword",
+              "ignore_above": 256
+            },
+            "imgh:signature": {
+              "type": "keyword",
+              "ignore_above": 256
             }
           }
         }

@@ -361,6 +361,29 @@ public class TestImageHashService {
         }
     }
 
+    @Test
+    public void testHashAndSignatureAreNotIndexedInFulltext() {
+        var doc = createPicture("/", "original", original);
+        viewsGenerated(doc);
+
+        doc = session.getDocument(doc.getRef());
+        var phash = (String) doc.getPropertyValue(PHASH_PROPERTY);
+        var signature = (String) doc.getPropertyValue(SIGNATURE_PROPERTY);
+        assertEquals(service.getSignature(), signature);
+
+        // the signature is "<algorithm>/<view>": analyzed, it would make every hashed picture match its view name
+        var terms = new ArrayList<>(List.of(signature.split("/")));
+        terms.add(phash);
+        for (var term : terms) {
+            var nxql = "SELECT * FROM Document WHERE ecm:fulltext = " + NXQL.escapeString(term);
+            var query = SearchQuery.builder(nxql, session.getPrincipal())
+                                   .index(searchService.getDefaultIndexName(session.getRepositoryName()))
+                                   .limit(10)
+                                   .build();
+            assertEquals("hash metadata found in fulltext: " + term, 0, searchService.search(query).getHitsCount());
+        }
+    }
+
     protected DocumentModel createFolder(String name, boolean readableByJohn) {
         var folder = session.createDocument(session.createDocumentModel("/", name, "Folder"));
         var acp = folder.getACP();

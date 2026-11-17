@@ -95,7 +95,7 @@ Two settings live in `nuxeo.conf` rather than in the extension point, because th
 
 | Property | Default | Role |
 |---|---|---|
-| `nuxeo.labs.images.dup.fulltext.repository` | `default` | Repository the fulltext exclusion is contributed to. **Must be changed if your repository is not named `default`**, see [Keeping Band Keys Out of Fulltext](#keeping-band-keys-out-of-fulltext) |
+| `nuxeo.labs.images.dup.fulltext.repository` | `default` | Repository the fulltext exclusion is contributed to. **Must be changed if your repository is not named `default`**, see [Keeping the Hash Properties Out of Fulltext](#keeping-the-hash-properties-out-of-fulltext) |
 | `nuxeo.labs.images.dup.fulltext.exclude` | `true` | Set to `false` to not contribute the exclusion at all |
 
 ### Search Backend
@@ -117,7 +117,7 @@ Similar images are found by querying the `imgh:bands` property through the Searc
 >
 > This is a deliberate trade-off. Those two search clients are distributed as private artifacts, and Elasticsearch 9 has no embeddable server. Testing them would make `mvn clean install` require both credentials and a Docker container, instead of working out of the box for everyone.
 
-To check a deployment manually, index a picture, then run a fulltext search on one of the values of its `imgh:bands` property, for example `f2eabf4f:0:cb94`. It must return no result: if the picture comes back, the mapping template was not applied and band keys are polluting the fulltext index. This is exactly what the automated test asserts on OpenSearch 1.x.
+To check a deployment manually, index a picture, then run a fulltext search on one of the values of its `imgh:bands` property, for example `f2eabf4f:0:cb94`, on its `imgh:phash` value, and on the name of the hashed view, `small` with the default configuration. The first two must return no result, and the third must not return every hashed picture: otherwise the mapping template was not applied and the hash properties are polluting the fulltext index. This is exactly what the automated tests assert on OpenSearch 1.x.
 
 The query always targets the search index, never the repository, so no MongoDB or PostgreSQL index is needed. Without a search engine client, hashes are still computed and stored, but duplicate detection is disabled and `ImageHash.FindSimilar` fails with an explicit error.
 
@@ -125,15 +125,15 @@ The index actually queried is the one declared as default for the repository, so
 
 `maxCandidates` must stay below the index `max_result_window`, which defaults to 10000. The plugin default is exactly 10000, so lower it if you lower the window.
 
-### Keeping Band Keys Out of Fulltext
+### Keeping the Hash Properties Out of Fulltext
 
-Band keys are opaque strings such as `f2eabf4f:0:cb94`. Two different fulltext indexes can pick them up, and they are independent of each other.
+The plugin stores three technical strings on each picture: the band keys in `imgh:bands`, opaque strings such as `f2eabf4f:0:cb94`, the hash in `imgh:phash`, and `imgh:signature`, which is made of the algorithm version and the name of the hashed view, for example `phash64v1/Small`. None of them is content. Left in fulltext, the signature alone makes a search for "small" return every hashed picture. Two different fulltext indexes can pick them up, and they are independent of each other.
 
-**Search engine fulltext is handled for you.** The Marketplace package installs and activates a template that maps `imgh:bands` explicitly, which overrides the default dynamic mapping and removes the `copy_to` into the fulltext field. It detects the search client in use, covers OpenSearch 1.x, OpenSearch 2.x and Elasticsearch 9.x, and also covers the green index of a blue/green reindex. Nothing to configure.
+**Search engine fulltext is handled for you.** The Marketplace package installs and activates a template that maps the three `imgh:*` properties explicitly, which overrides the default dynamic mapping and removes the `copy_to` into the fulltext field. It detects the search client in use, covers OpenSearch 1.x, OpenSearch 2.x and Elasticsearch 9.x, and also covers the green index of a blue/green reindex. Nothing to configure.
 
-The mapping is applied when an index is created, so on an existing deployment you must drop the index and reindex for it to take effect.
+The mapping is applied when an index is created, so on an existing deployment you must drop the index and reindex for it to take effect. This also applies when upgrading from a build of this plugin that only mapped `imgh:bands`.
 
-**Repository fulltext is handled for you too, but check the repository name.** By default Nuxeo puts every string property of every schema into `ecm:fulltextSimple`, including `imgh:bands`. Besides adding noise, it means each stored hash marks the document dirty for fulltext and schedules an extra extraction job per picture. The same template contributes the exclusion, picking the right form from `nuxeo.db.type`: MongoDB, PostgreSQL, SQL Server, Oracle, MySQL, MariaDB and H2 are covered. The contribution is purely additive, so the exclusions already declared by the Nuxeo database template, such as `thumb:thumbnail`, are preserved.
+**Repository fulltext is handled for you too, but check the repository name.** By default Nuxeo puts every string property of every schema into `ecm:fulltextSimple`, including the `imgh:*` ones. Besides adding noise, it means each stored hash marks the document dirty for fulltext and schedules an extra extraction job per picture. The same template contributes the exclusion, picking the right form from `nuxeo.db.type`: MongoDB, PostgreSQL, SQL Server, Oracle, MySQL, MariaDB and H2 are covered. The contribution is purely additive, so the exclusions already declared by the Nuxeo database template, such as `thumb:thumbnail`, are preserved.
 
 > [!IMPORTANT]
 > The contribution targets the repository named `default`. **If your repository has another name, set it in `nuxeo.conf`**, otherwise a second, unconfigured repository is declared and the server fails to start:
@@ -156,6 +156,8 @@ For reference, or for a deployment where the template is not usable, this is wha
       <index>
         <excludeField>imgh:bands</excludeField>
         <excludeField>imgh:bands/*</excludeField>
+        <excludeField>imgh:phash</excludeField>
+        <excludeField>imgh:signature</excludeField>
       </index>
     </fulltext>
   </repository>
@@ -171,6 +173,8 @@ For reference, or for a deployment where the template is not usable, this is wha
         <index name="default">
           <excludeField>imgh:bands</excludeField>
           <excludeField>imgh:bands/*</excludeField>
+          <excludeField>imgh:phash</excludeField>
+          <excludeField>imgh:signature</excludeField>
         </index>
       </fulltext>
     </indexing>
@@ -178,7 +182,7 @@ For reference, or for a deployment where the template is not usable, this is wha
 </extension>
 ```
 
-Both `<excludeField>` entries are needed: `imgh:bands` suppresses the text extraction, `imgh:bands/*` suppresses the dirty-path trigger that schedules the job. Keep the `<index>` name as shown, it is not the same on the two backends: it has to match the one declared by the Nuxeo template, otherwise the contribution adds a second index instead of merging into the existing one.
+All four `<excludeField>` entries are needed. The band keys take two: `imgh:bands` suppresses the text extraction, `imgh:bands/*` suppresses the dirty-path trigger that schedules the job. `imgh:phash` and `imgh:signature` are single values, one entry each does both, and the job is only skipped when every property written with the hash is excluded. Keep the `<index>` name as shown, it is not the same on the two backends: it has to match the one declared by the Nuxeo template, otherwise the contribution adds a second index instead of merging into the existing one.
 
 ## How to Build and Deploy
 
