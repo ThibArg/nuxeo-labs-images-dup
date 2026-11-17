@@ -24,6 +24,7 @@ import static nuxeo.labs.images.dup.ImageHashService.DUPLICATES_EVENT_PROPERTY;
 import static nuxeo.labs.images.dup.ImageHashService.DUPLICATES_TRUNCATED_EVENT_PROPERTY;
 import static nuxeo.labs.images.dup.ImageHashService.IMAGE_HASH_FACET;
 import static nuxeo.labs.images.dup.ImageHashService.MAX_EVENT_DUPLICATES;
+import static nuxeo.labs.images.dup.ImageHashService.ORIENTATIONS_PROPERTY;
 import static nuxeo.labs.images.dup.ImageHashService.PHASH_PROPERTY;
 import static nuxeo.labs.images.dup.ImageHashService.SIGNATURE_PROPERTY;
 import static nuxeo.labs.images.dup.pageprovider.SimilarImagesPageProvider.DISTANCE_CONTEXT_DATA;
@@ -164,6 +165,9 @@ public class TestImageHashService {
         assertTrue(doc.hasFacet(IMAGE_HASH_FACET));
         assertEquals(16, ((String) doc.getPropertyValue(PHASH_PROPERTY)).length());
         assertEquals(HashBands.BAND_COUNT, ((Object[]) doc.getPropertyValue(BANDS_PROPERTY)).length);
+        var orientations = (String[]) doc.getPropertyValue(ORIENTATIONS_PROPERTY);
+        assertEquals(PHash.ORIENTATIONS, orientations.length);
+        assertEquals(doc.getPropertyValue(PHASH_PROPERTY), orientations[0]);
         assertEquals(service.getSignature(), doc.getPropertyValue(SIGNATURE_PROPERTY));
         assertEquals(modified, doc.getPropertyValue("dc:modified"));
         assertTrue(session.getVersions(doc.getRef()).isEmpty());
@@ -384,7 +388,10 @@ public class TestImageHashService {
         assertEquals(service.getSignature(), signature);
 
         // the same signature on every hashed picture: in fulltext, they would all match it
-        for (var term : List.of(signature, phash)) {
+        var terms = new ArrayList<>(List.of(signature, phash));
+        terms.addAll(List.of((String[]) doc.getPropertyValue(ORIENTATIONS_PROPERTY)));
+        assertEquals(2 + PHash.ORIENTATIONS, terms.size());
+        for (var term : terms) {
             var nxql = "SELECT * FROM Document WHERE ecm:fulltext = " + NXQL.escapeString(term);
             var query = SearchQuery.builder(nxql, session.getPrincipal())
                                    .index(searchService.getDefaultIndexName(session.getRepositoryName()))
@@ -562,14 +569,15 @@ public class TestImageHashService {
     }
 
     /**
-     * A search that does not need the orientations starts from the stored hash: it must not fetch and decode the view
+     * A search starts from the stored hashes, the 8 orientations included: it must not fetch and decode the view
      * again. The view is made unreadable after the hashing to tell the two apart.
      */
     @Test
     public void testFindSimilarUsesTheStoredHash() {
         var first = createPicture("/", "first", original);
         var resized = createPicture("/", "resized", TestImages.resize(original, 280, 210));
-        viewsGenerated(first, resized);
+        var rotated = createPicture("/", "rotated", TestImages.rotate90(original));
+        viewsGenerated(first, resized, rotated);
 
         first = session.getDocument(first.getRef());
         first.setPropertyValue("picture:views", new ArrayList<>(List.of(unreadableView("Small"))));
@@ -578,8 +586,8 @@ public class TestImageHashService {
 
         assertEquals(Set.of(resized.getId()),
                 ids(service.findSimilar(first, session.getPrincipal(), null, null, Boolean.FALSE)));
-        // the hashes of the orientations are not stored: they still need the image
-        assertEquals(SimilarImages.NONE, service.findSimilar(first, session.getPrincipal(), null, null, Boolean.TRUE));
+        assertEquals(Set.of(resized.getId(), rotated.getId()),
+                ids(service.findSimilar(first, session.getPrincipal(), null, null, Boolean.TRUE)));
     }
 
     /** With the automatic detection switched off, pictures are still hashed, and the bulk action still detects. */
@@ -782,6 +790,8 @@ public class TestImageHashService {
             assertThrows(ReadOnlyPropertyException.class,
                     () -> doc.setPropertyValue(PHASH_PROPERTY, "0000000000000000"));
             assertThrows(ReadOnlyPropertyException.class, () -> doc.setPropertyValue(SIGNATURE_PROPERTY, "forged"));
+            assertThrows(ReadOnlyPropertyException.class,
+                    () -> doc.setPropertyValue(ORIENTATIONS_PROPERTY, new ArrayList<String>()));
             johnSession.saveDocument(doc);
         }
         txFeature.nextTransaction();

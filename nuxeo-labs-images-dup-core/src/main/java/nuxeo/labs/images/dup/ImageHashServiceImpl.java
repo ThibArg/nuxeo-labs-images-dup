@@ -119,10 +119,10 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
     protected volatile boolean missingSearchEngineLogged;
 
     /**
-     * @param reduced the reduced luminance matrix, {@code null} when the hash was read from the document, in which
-     *            case the hashes of the orientations cannot be computed
+     * @param orientations the hashes of the 8 orientations of the image, the first one being {@code hash};
+     *            {@code null} when not needed, or for a degenerate image read from the document
      */
-    protected record Computed(long hash, @Nullable double[][] reduced, boolean degenerate) {
+    protected record Computed(long hash, @Nullable long[] orientations, boolean degenerate) {
     }
 
     /**
@@ -290,17 +290,26 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
         return doc.hasFacet(IMAGE_HASH_FACET) ? (String) doc.getPropertyValue(SIGNATURE_PROPERTY) : null;
     }
 
+    protected List<String> getStoredOrientations(DocumentModel doc) {
+        return doc.getPropertyValue(ORIENTATIONS_PROPERTY) instanceof String[] stored ? List.of(stored) : List.of();
+    }
+
     /**
-     * Returns the hash to search from: the stored one when it has the current signature and the search does not need
-     * the orientations, whose hashes are not stored and need the image. It spares fetching and decoding a blob, and
-     * it is the hash the index knows.
+     * Returns the hashes to search from: the stored ones when they have the current signature, which spares fetching
+     * and decoding a blob, and which are the ones the index knows. Otherwise they are computed from the image.
      */
     @Nullable
     protected Computed storedOrComputed(DocumentModel doc, boolean orientations) {
-        if (!orientations && signature.equals(getStoredSignature(doc))
-                && doc.getPropertyValue(PHASH_PROPERTY) instanceof String hex) {
+        if (signature.equals(getStoredSignature(doc)) && doc.getPropertyValue(PHASH_PROPERTY) instanceof String hex) {
+            var hash = PHash.fromHex(hex);
             var hasBands = doc.getPropertyValue(BANDS_PROPERTY) instanceof Object[] bands && bands.length > 0;
-            return new Computed(PHash.fromHex(hex), null, !hasBands);
+            if (!hasBands || !orientations) {
+                return new Computed(hash, null, !hasBands);
+            }
+            var stored = getStoredOrientations(doc);
+            if (stored.size() == PHash.ORIENTATIONS) {
+                return new Computed(hash, stored.stream().mapToLong(PHash::fromHex).toArray(), false);
+            }
         }
         return compute(doc);
     }
@@ -313,7 +322,8 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
             return null;
         }
         var reduced = PHash.reduce(image);
-        return new Computed(PHash.hash(reduced), reduced, PHash.isDegenerate(image, reduced));
+        var orientations = PHash.orientationHashes(reduced);
+        return new Computed(orientations[0], orientations, PHash.isDegenerate(image, reduced));
     }
 
     @Nullable
@@ -384,11 +394,18 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
      */
     protected boolean store(CoreSession session, DocumentModel doc, Computed computed) {
         var hex = PHash.toHex(computed.hash());
-        if (signature.equals(getStoredSignature(doc)) && hex.equals(doc.getPropertyValue(PHASH_PROPERTY))) {
+        // like the band keys, of no use for a degenerate image, which is never searched
+        var orientations = new ArrayList<String>();
+        if (!computed.degenerate()) {
+            Arrays.stream(computed.orientations()).mapToObj(PHash::toHex).forEach(orientations::add);
+        }
+        if (signature.equals(getStoredSignature(doc)) && hex.equals(doc.getPropertyValue(PHASH_PROPERTY))
+                && orientations.equals(getStoredOrientations(doc))) {
             return false;
         }
         doc.addFacet(IMAGE_HASH_FACET);
         doc.setPropertyValue(PHASH_PROPERTY, hex);
+        doc.setPropertyValue(ORIENTATIONS_PROPERTY, orientations);
         doc.setPropertyValue(BANDS_PROPERTY, computed.degenerate() ? new ArrayList<String>()
                 : new ArrayList<>(HashBands.bands(bandPrefix, computed.hash())));
         doc.setPropertyValue(SIGNATURE_PROPERTY, signature);
@@ -406,7 +423,7 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
 
     protected SimilarImages search(DocumentModel doc, NuxeoPrincipal principal, Computed computed,
             SearchIndex index, boolean orientations, int radius, int threshold) {
-        var hashes = orientations ? PHash.orientationHashes(computed.reduced()) : new long[] { computed.hash() };
+        var hashes = orientations ? computed.orientations() : new long[] { computed.hash() };
         var maxCandidates = config.getMaxCandidates();
         // candidate document id to hash; in the usual case a single query fetches them all
         var candidates = new LinkedHashMap<String, String>();

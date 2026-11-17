@@ -13,6 +13,7 @@
     -->
     <property schema="imagehash" name="phash" secured="true" />
     <property schema="imagehash" name="bands" secured="true" />
+    <property schema="imagehash" name="orientations" secured="true" />
     <property schema="imagehash" name="signature" secured="true" />
   </extension>
 

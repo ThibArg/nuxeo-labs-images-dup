@@ -14,6 +14,8 @@
           <index name="default">
             <excludeField>imgh:bands</excludeField>
             <excludeField>imgh:bands/*</excludeField>
+            <excludeField>imgh:orientations</excludeField>
+            <excludeField>imgh:orientations/*</excludeField>
             <excludeField>imgh:phash</excludeField>
             <excludeField>imgh:signature</excludeField>
           </index>

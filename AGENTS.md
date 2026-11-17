@@ -95,8 +95,9 @@ Cross-checked against the opensearch1 sources plus the private `nuxeo-opensearch
 
 ## Fulltext: two independent layers, both fixed here
 
-The three `imgh:*` properties are technical strings: band keys (`f2eabf4f:0:cb94`), the hash in hex, and
-the signature (`phash64v2`). **All three are excluded, never only `imgh:bands`**: the signature then
+The four `imgh:*` properties are technical strings: band keys (`f2eabf4f:0:cb94`), the hash in hex, the
+hashes of the 8 orientations, and the signature (`phash64v2`). **All four are excluded, never only
+`imgh:bands`**: the signature then
 was `phash64v1/Small`, and once analyzed it made a fulltext search for "small" return every hashed
 picture (review finding H2). They can
 leak into **two unrelated** fulltext indexes. Fixing one does nothing for the other: `ecm:fulltextSimple` is never shipped to the search engine
@@ -155,6 +156,9 @@ paths.
   installed, and shows up as `Pending` in the startup banner.
 - Mappings are applied **only at index creation**. Existing deployments need a drop + reindex, including
   those created by a build that mapped `imgh:bands` only.
+- `imgh:orientations` is mapped `keyword` with `"index": false` and `"doc_values": false`: it is only read
+  back from the document, never queried, so its 8 values per picture stay out of the index structures.
+  Do not write an NXQL clause on it. Checked on the embedded opensearch1 only, like the rest.
 - `imgh:phash` and `imgh:signature` are mapped `keyword` with `ignore_above: 256`, the dynamic template
   minus `copy_to`. The search reads `imgh:phash` from `_source`, so `ignore_above` cannot hide a hash.
 - Only opensearch1 is covered by a test (`testBandKeysAreNotIndexedInFulltext` and
@@ -176,7 +180,7 @@ paths.
 - Beyond noise, a hash store marks the written paths dirty and schedules an extra `FulltextExtractorWork`;
   `store()` disables versioning, DC, audit and notifications but cannot disable that. The work is skipped
   only when **every** dirty path is excluded (`DBSTransactionState.java:1440-1469` sets `dirtyStrings` on
-  the first one that is not), and `store()` writes the three properties together: excluding
+  the first one that is not), and `store()` writes the four properties together: excluding
   `imgh:bands` alone never suppressed the work.
 - **Branches on `nuxeo.db.type`**, the only backend discriminator visible to FreeMarker. Beware the
   values: H2 is **`default`**, never `h2`, and MariaDB reports **`mysql`**. `nuxeo.dbtemplate`,
@@ -198,7 +202,8 @@ paths.
   appends a second index, which on VCS is a DDL change (`Model.java:1392-1413`).
 - `imgh:phash` and `imgh:signature` are scalars: one bare-path `<excludeField>` each serves both consumers
   below.
-- **Both `excludeField` forms of the array are required, for two different consumers.** `imgh:bands` stops the
+- **Both `excludeField` forms of each array are required, for two different consumers**, for
+  `imgh:orientations` exactly as for `imgh:bands`. `imgh:bands` stops the
   extraction, because `StringsExtractor.findStrings` tests an `ArrayProperty` at its bare path
   (`StringsExtractor.java:95-105`); `imgh:bands/*` stops the job scheduling, because `DirtyPathsFinder`
   appends `/*` for arrays and the result is looked up in `indexesByPropPathExcludedSimple`
@@ -302,11 +307,13 @@ paths.
   Candidates come from `imgh:bands IN (...)`; `queryKeys` expands to all 1- or 2-bit variants per band.
   Radius `r` guarantees finding everything within Hamming distance `4r + 3`. Key count explodes:
   radius 0 -> 4 keys, 1 -> 68, 2 -> 548.
-- **`storedOrComputed`**: `findSimilar` and `detectDuplicates` start from the stored hash when its
-  signature is current and the search has no orientations, and decode the image otherwise (review
-  finding M5, half of it). `Computed.reduced` is then `null`, so never call `orientationHashes` on it.
-  Storing the 8 orientation hashes, to spare the decoding for the default tab search too, is a schema
-  change that was **not** done: a new string property has to go through every fulltext copy, see above.
+- **`storedOrComputed`**: `findSimilar` and `detectDuplicates` start from the stored hashes when their
+  signature is current, and only decode the image otherwise (review finding M5). The 8 orientation hashes
+  are stored in `imgh:orientations` at hash time, because they cannot be derived from the 64 bits: a
+  mirror flips the sign of every other coefficient, which moves the median. `Computed.orientations` is
+  `null` when the search does not need them, and for a degenerate image read from the document.
+  `store()` saves again when the stored orientations differ from the computed ones, so a document
+  hashed before the property existed gets them at its next hashing.
 - **`start()` must not call `ImageIO.setCacheDirectory`** (review finding L1): it is JVM-wide state, and
   the check that came with it failed the server start for an optional feature. ImageIO already caches in
   `java.io.tmpdir`, which `nuxeoctl` sets to the Nuxeo temporary directory (`NuxeoLauncher.java:747`).
@@ -333,7 +340,7 @@ paths.
   audit, notifications and picture-views regeneration via `putContextData` before `saveDocument`. Keep
   that block intact: removing `DISABLE_PICTURE_VIEWS_GENERATION_LISTENER` creates an infinite
   regeneration loop, removing the others bumps `dc:modified` and creates versions.
-- **The three `imgh:*` properties are `secured="true"`** (`imagehash-schemas-contrib.xml`, review finding
+- **The four `imgh:*` properties are `secured="true"`** (`imagehash-schemas-contrib.xml`, review finding
   M2): without it any user with Write could blank `imgh:bands` and, the signature still being current,
   stay invisible until a `force` run. The check is `isSecured() && !NuxeoPrincipal.isCurrentAdministrator()`
   (`AbstractProperty.java:375-377`): it reads the **login stack of the current thread**, not the
@@ -352,8 +359,8 @@ paths.
     (`RecomputeViewsAction.java:106`), so in production a bundle holds **one** event. The report's
     reproduction, and `testDetectDuplicatesBulkAction`, put several events in one transaction only
     because the test fires them by hand.
-  - `detectDuplicates` reads the **stored** hash when `detectionOrientations` is off, the default, and
-    decodes the image only when it is on. It skips documents whose signature is not the current one.
+  - `detectDuplicates` reads the **stored** hashes, orientations included, and decodes no image. It
+    skips documents whose signature is not the current one.
   - Unlike `updateHashAndDetectDuplicates` it lets a failing search throw: there is no hash to protect,
     and the action must count it in `errorCount`.
   - Known and accepted: the event principal is the user of the command, a pair is reported from both

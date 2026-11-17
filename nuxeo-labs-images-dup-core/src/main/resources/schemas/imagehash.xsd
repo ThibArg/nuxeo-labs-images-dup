@@ -9,6 +9,10 @@
   <!-- Search keys "<signatureId>:<bandIndex>:<16-bit band in hex>", empty for degenerate images -->
   <xs:element name="bands" type="nxs:stringList" />
 
+  <!-- Hashes of the 8 orientations of the image (rotations and mirrors), 16 hex characters each, the first one
+       being phash. Read by the searches for rotated and mirrored images. Empty for degenerate images -->
+  <xs:element name="orientations" type="nxs:stringList" />
+
   <!-- Algorithm version; hashes with different signatures are never compared -->
   <xs:element name="signature" type="xs:string" />
 

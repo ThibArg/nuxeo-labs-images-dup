@@ -38,7 +38,7 @@ The operation sets the `imageHashTruncated` context variable: `true` when the re
 
 **`threshold` and `radius` are coupled**: keep `threshold` close to `4 * radius + 3`, which is 3 at radius 0, 7 at radius 1 and 11 at radius 2. Beyond that distance a pair is found only when its differing bits happen not to be spread evenly across the four bands, so raising `threshold` alone widens the accepted distance without widening the search. The default pair, threshold `8` at radius `1`, sits one above the guarantee: around 5% of the pairs at a distance of exactly 8 are missed, which is acceptable on the last accepted distance. Raising `threshold` to 10 while leaving `radius` at 1 would miss roughly a quarter of the pairs it claims to accept, so raise `radius` to 2 as well, and pay the 548 keys.
 
-**A search without `orientations` starts from the stored hash**, so it reads no image. With `orientations`, the default for the operation and the tab, the hashes of the 8 orientations are computed again from the picture view on each search, which costs one blob read and one image decoding.
+**A search starts from the stored hashes**, those of the 8 orientations included, so it reads no image. Only a picture that is not hashed yet, or hashed by an earlier version of the algorithm, has its view fetched and decoded for the search.
 
 **`maxResults` does not make the search faster.** The candidate query and the distance comparison always run on the whole candidate set, then the results are sorted by distance and only then truncated. So `maxResults` only reduces the number of documents loaded from the repository and the size of the response. What drives the search cost is `radius` and `orientations`, which multiplies the number of queried keys by 8. The hard limit on the candidate set is `maxCandidates`, see [Candidate Limit](#candidate-limit).
 
@@ -61,7 +61,7 @@ It computes nothing: for each selected picture hashed with the current configura
 
 Like `computeImageHash`, it can only be launched by administrators.
 
-The hash is stored in three properties of the `ImageHash` facet, `imgh:phash`, `imgh:bands` and `imgh:signature`. They are declared `secured`: only administrators and the system can write them, so a user who can edit a picture cannot blank or forge its hash to hide it from detection. Custom code calling `ImageHashService.updateHash` must therefore run under an administrator or system login.
+The hash is stored in four properties of the `ImageHash` facet: `imgh:phash`, `imgh:bands`, `imgh:orientations`, which holds the hashes of the 8 orientations of the image, rotations and mirrors, and `imgh:signature`. They are declared `secured`: only administrators and the system can write them, so a user who can edit a picture cannot blank or forge its hash to hide it from detection. Custom code calling `ImageHashService.updateHash` must therefore run under an administrator or system login.
 
 Storing the hash is a second save of the picture, after the one of its views. It creates no version, does not change the modification date or the last contributor, writes no audit entry and sends no notification. Two things cannot be avoided, though: the picture is indexed a second time in the search engine, and the save fires `beforeDocumentModification` and `documentModified` like any other, so event handlers on document modification, Studio ones included, run once more per picture, as the system user.
 
@@ -185,9 +185,9 @@ To get complete results on a large repository, lower `radius` or turn `orientati
 
 ### Keeping the Hash Properties Out of Fulltext
 
-The plugin stores three technical strings on each picture: the band keys in `imgh:bands`, opaque strings such as `f2eabf4f:0:cb94`, the hash in `imgh:phash`, and `imgh:signature`, the version of the hash algorithm, for example `phash64v2`. None of them is content. Left in fulltext, every hashed picture matches a search for its signature, and early versions of this plugin, whose signature ended with the name of the hashed view, made a search for "small" return all of them. Two different fulltext indexes can pick them up, and they are independent of each other.
+The plugin stores four technical properties on each picture: the band keys in `imgh:bands`, opaque strings such as `f2eabf4f:0:cb94`, the hash in `imgh:phash`, the hashes of its 8 orientations in `imgh:orientations`, and `imgh:signature`, the version of the hash algorithm, for example `phash64v2`. None of them is content. Left in fulltext, every hashed picture matches a search for its signature, and early versions of this plugin, whose signature ended with the name of the hashed view, made a search for "small" return all of them. Two different fulltext indexes can pick them up, and they are independent of each other.
 
-**Search engine fulltext is handled for you.** The Marketplace package installs and activates a template that maps the three `imgh:*` properties explicitly, which overrides the default dynamic mapping and removes the `copy_to` into the fulltext field. It detects the search client in use, covers OpenSearch 1.x, OpenSearch 2.x and Elasticsearch 9.x, and also covers the green index of a blue/green reindex. Nothing to configure.
+**Search engine fulltext is handled for you.** The Marketplace package installs and activates a template that maps the four `imgh:*` properties explicitly, which overrides the default dynamic mapping and removes the `copy_to` into the fulltext field. It detects the search client in use, covers OpenSearch 1.x, OpenSearch 2.x and Elasticsearch 9.x, and also covers the green index of a blue/green reindex. Nothing to configure.
 
 The mapping is applied when an index is created, so on an existing deployment you must drop the index and reindex for it to take effect. This also applies when upgrading from a build of this plugin that only mapped `imgh:bands`.
 
@@ -214,6 +214,8 @@ For reference, or for a deployment where the template is not usable, this is wha
       <index>
         <excludeField>imgh:bands</excludeField>
         <excludeField>imgh:bands/*</excludeField>
+        <excludeField>imgh:orientations</excludeField>
+        <excludeField>imgh:orientations/*</excludeField>
         <excludeField>imgh:phash</excludeField>
         <excludeField>imgh:signature</excludeField>
       </index>
@@ -231,6 +233,8 @@ For reference, or for a deployment where the template is not usable, this is wha
         <index name="default">
           <excludeField>imgh:bands</excludeField>
           <excludeField>imgh:bands/*</excludeField>
+          <excludeField>imgh:orientations</excludeField>
+          <excludeField>imgh:orientations/*</excludeField>
           <excludeField>imgh:phash</excludeField>
           <excludeField>imgh:signature</excludeField>
         </index>
@@ -240,7 +244,7 @@ For reference, or for a deployment where the template is not usable, this is wha
 </extension>
 ```
 
-All four `<excludeField>` entries are needed. The band keys take two: `imgh:bands` suppresses the text extraction, `imgh:bands/*` suppresses the dirty-path trigger that schedules the job. `imgh:phash` and `imgh:signature` are single values, one entry each does both, and the job is only skipped when every property written with the hash is excluded. Keep the `<index>` name as shown, it is not the same on the two backends: it has to match the one declared by the Nuxeo template, otherwise the contribution adds a second index instead of merging into the existing one.
+All six `<excludeField>` entries are needed. Each of the two lists takes two: `imgh:bands` suppresses the text extraction, `imgh:bands/*` suppresses the dirty-path trigger that schedules the job, and the same goes for `imgh:orientations`. `imgh:phash` and `imgh:signature` are single values, one entry each does both, and the job is only skipped when every property written with the hash is excluded. Keep the `<index>` name as shown, it is not the same on the two backends: it has to match the one declared by the Nuxeo template, otherwise the contribution adds a second index instead of merging into the existing one.
 
 ## How to Build and Deploy
 

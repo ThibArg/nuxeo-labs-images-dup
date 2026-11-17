@@ -54,6 +54,14 @@ public interface ImageHashService {
     String BANDS_PROPERTY = "imgh:bands";
 
     /**
+     * Property containing the hashes of the 8 orientations of the image, see {@link PHash#orientationHashes}. The
+     * first one is the value of {@link #PHASH_PROPERTY}.
+     *
+     * @since 2025.1.0
+     */
+    String ORIENTATIONS_PROPERTY = "imgh:orientations";
+
+    /**
      * Property containing the signature of the hash: the version of the algorithm that computed it.
      *
      * @since 2025.1.0

@@ -69,7 +69,8 @@ public class TestFulltextExclusion {
     @Inject
     protected CoreSession session;
 
-    protected static final Set<String> EXCLUDED = Set.of("imgh:bands", "imgh:bands/*", "imgh:phash", "imgh:signature");
+    protected static final Set<String> EXCLUDED = Set.of("imgh:bands", "imgh:bands/*", "imgh:orientations",
+            "imgh:orientations/*", "imgh:phash", "imgh:signature");
 
     /**
      * @since 2025.1.0

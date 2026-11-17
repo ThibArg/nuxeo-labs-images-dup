@@ -3,13 +3,16 @@
 <component name="nuxeo.labs.images.dup.search.mapping">
 
   <!--
-    The three properties of the imagehash schema are technical strings: imgh:bands holds opaque
-    search keys, imgh:phash the hash in hexadecimal and imgh:signature the version of the hash
-    algorithm, the same on every picture. The default dynamic mapping indexes every string with
+    The four properties of the imagehash schema are technical strings: imgh:bands holds opaque
+    search keys, imgh:phash the hash in hexadecimal, imgh:orientations the hashes of the 8
+    orientations of the image and imgh:signature the version of the hash algorithm, the same on
+    every picture. The default dynamic mapping indexes every string with
     copy_to="all_field", which pushes them into the fulltext field and makes them match fulltext
     searches: a search for the signature returns every hashed picture. An explicit property mapping
     takes precedence over the dynamic template and drops copy_to, while keeping the field queryable
     as a keyword. imgh:phash and imgh:signature keep the ignore_above of the dynamic template.
+    imgh:orientations is only ever read back from the document, never queried: it is neither
+    indexed nor given doc values, which keeps its 8 values per picture out of the index structures.
 
     The mapping is written once, in the macro below. The test contribution of the core module
     (test-opensearch-mapping-contrib.xml) is its copy for the tests, keep it identical.
@@ -45,6 +48,11 @@
             "imgh:bands": {
               "type": "keyword",
               "ignore_above": 32
+            },
+            "imgh:orientations": {
+              "type": "keyword",
+              "index": false,
+              "doc_values": false
             },
             "imgh:phash": {
               "type": "keyword",
