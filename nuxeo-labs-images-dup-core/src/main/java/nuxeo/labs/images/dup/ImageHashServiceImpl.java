@@ -89,6 +89,9 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
     /** Images are subsampled when read, down to about this size on their smaller side. */
     protected static final int READ_SIZE = 256;
 
+    /** Images are subsampled further when read, if needed, so that no more pixels than this are decoded. */
+    protected static final int MAX_READ_PIXELS = 1 << 21;
+
     /**
      * Name of the search client querying the repository itself, declared by the {@code nuxeo-core-search} bundle. It
      * is the only client that cannot serve the band query; every other one is a search engine.
@@ -336,7 +339,7 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
             var reader = readers.next();
             try {
                 reader.setInput(input, true, true);
-                var step = Math.max(1, Math.min(reader.getWidth(0), reader.getHeight(0)) / READ_SIZE);
+                var step = subsamplingStep(reader.getWidth(0), reader.getHeight(0));
                 var param = reader.getDefaultReadParam();
                 param.setSourceSubsampling(step, step, 0, 0);
                 return reader.read(0, param);
@@ -344,6 +347,19 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
                 reader.dispose();
             }
         }
+    }
+
+    /**
+     * Returns the subsampling step bringing the smaller side of the image down to about {@link #READ_SIZE}, raised if
+     * needed so that at most {@link #MAX_READ_PIXELS} are decoded: reducing the smaller side of a very elongated
+     * image is not enough, its luminance matrix would take hundreds of megabytes.
+     */
+    protected static int subsamplingStep(int width, int height) {
+        var step = Math.max(1, Math.min(width, height) / READ_SIZE);
+        while ((long) Math.ceilDiv(width, step) * Math.ceilDiv(height, step) > MAX_READ_PIXELS) {
+            step++;
+        }
+        return step;
     }
 
     /**

@@ -571,7 +571,7 @@ public class TestImageHashService {
         // checked on the service's own reading code: ImageIO.read() would wrap it into an IIOException
         var reader = (ImageHashServiceImpl) service;
         assertThrows(IllegalArgumentException.class,
-                () -> reader.readSubsampled(new ByteArrayInputStream(TestImages.unreadablePng())));
+                () -> reader.readSubsampled(new ByteArrayInputStream(TestImages.unreadableGif())));
 
         var reference = createPicture("/", "reference", original);
         var doc = createPicture("/", "fallback", unreadableView("Small"), jpegView("Medium", "fallback", original));
@@ -794,10 +794,10 @@ public class TestImageHashService {
         return view(title, blob, image.getWidth(), image.getHeight());
     }
 
-    /** A view the image reader fails on with a runtime exception, see {@link TestImages#unreadablePng()}. */
+    /** A view the image reader fails on with a runtime exception, see {@link TestImages#unreadableGif()}. */
     protected static Map<String, Serializable> unreadableView(String title) {
-        var blob = new ByteArrayBlob(TestImages.unreadablePng(), "image/png");
-        blob.setFilename("unreadable.png");
+        var blob = new ByteArrayBlob(TestImages.unreadableGif(), "image/gif");
+        blob.setFilename("unreadable.gif");
         return view(title, blob, 64, 48);
     }
 

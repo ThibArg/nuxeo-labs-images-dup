@@ -127,20 +127,25 @@ public final class TestImages {
     }
 
     /**
-     * A PNG the JDK reader rejects with a runtime exception, not an {@link IOException}: its header declares a width
-     * of 16 million pixels, and the reader fails on the scanline size before reading any pixel.
+     * A GIF the JDK reader rejects with a runtime exception, not an {@link IOException}: its only frame declares a
+     * width of zero, and the reader fails with "Empty region!".
      */
-    public static byte[] unreadablePng() {
+    public static byte[] unreadableGif() {
         var bytes = new ByteArrayOutputStream();
         try {
-            ImageIO.write(sample(1, 64, 48), "png", bytes);
+            // 2 colors: the image descriptor follows the 13 bytes of the header and the 6 of the color table
+            ImageIO.write(new BufferedImage(64, 48, BufferedImage.TYPE_BYTE_BINARY), "gif", bytes);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-        var png = bytes.toByteArray();
-        // most significant byte of the IHDR width
-        png[16] = 1;
-        return png;
+        var gif = bytes.toByteArray();
+        if (gif[19] != 0x2C) {
+            throw new IllegalStateException("No GIF image descriptor where expected");
+        }
+        // the frame width, after the separator and the 2 x 2 bytes of its position
+        gif[24] = 0;
+        gif[25] = 0;
+        return gif;
     }
 
     public static BufferedImage recompress(BufferedImage image, float quality) {

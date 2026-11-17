@@ -236,12 +236,15 @@ paths.
   never the views-generation components, so **ImageMagick is not required**. Picture views are faked by
   writing `picture:views` directly (`createPicture`) and `pictureViewsGenerationDone` is fired by hand
   (`viewsGenerated`). Keep it that way.
-- `TestImages.unreadablePng()` is the fixture for a view that fails with a **runtime** exception: an RGB
-  PNG whose IHDR width is patched to 16 million pixels, on which the reader throws
-  `IllegalArgumentException: Invalid scanline stride` (JDK 21.0.3). `ImageIO.read()` wraps it into an
-  `IIOException`, so `testUnreadableViewFallsBackToNextView` first asserts the exception type on
+- `TestImages.unreadableGif()` is the fixture for a view that fails with a **runtime** exception: a GIF
+  whose frame width is patched to zero, on which the reader throws `IllegalArgumentException: Empty
+  region!` (JDK 21.0.3). `ImageIO.read()` wraps such exceptions into an `IIOException`, so
+  `testUnreadableViewFallsBackToNextView` first asserts the exception type on
   `ImageHashServiceImpl.readSubsampled` itself: if a JDK update turns it into an `IOException`, the test
-  fails there instead of passing trivially.
+  fails there instead of passing trivially. It did its job once already: the first fixture was a PNG
+  declaring a 16 million pixel width, which stopped throwing when `subsamplingStep` got its pixel bound.
+  With that bound, fuzzing the first 120 bytes of each format found runtime exceptions on GIF, BMP and
+  TIFF only, none on JPEG or PNG, and one `OutOfMemoryError` on a TIFF, which nothing catches.
 - `FailingSaveListener` (`test-failing-save-listener-contrib.xml`, deployed on the whole class) makes
   `saveDocument` fail for documents **named `unsavable`**, with a bubbling exception that does not mark
   the transaction rollback-only. It is what exercises the per-document `catch` of the two loops; the
@@ -301,6 +304,10 @@ paths.
   keeps its own `parseInt`, needed for values that are not integers; `maxResults` / `limit` are checked
   by each entry point, the service does not know them. The configuration still clamps silently.
   `AutomationService.run` lets the `NuxeoException` through unwrapped.
+- **`subsamplingStep` bounds the decoded pixels to `MAX_READ_PIXELS` (2 million)** on top of reducing the
+  smaller side to `READ_SIZE` (review finding L5). It only changes the step, so the hash, of images more
+  elongated than about 8:1, and can turn a strip less than 32 px wide once decoded into a degenerate
+  image. No `ALGORITHM` bump: `phash64v2` has not been deployed anywhere. Bump it if this changes again.
 - **Degenerate images** (smaller side < 32 px, or reduced-luminance stddev < 2.0) get a hash stored but
   an **empty** `imgh:bands`, so they are never candidates. Otherwise blank images and icons match
   everything.

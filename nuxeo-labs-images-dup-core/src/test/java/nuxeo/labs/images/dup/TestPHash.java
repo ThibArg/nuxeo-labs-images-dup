@@ -114,6 +114,27 @@ public class TestPHash {
         return matrix;
     }
 
+    /**
+     * The step brings the smaller side down to about {@code READ_SIZE}. A very elongated image is still huge then, a
+     * 1000 x 100000 strip is 11 million pixels at a step of 3: the number of decoded pixels must be bounded too.
+     */
+    @Test
+    public void testSubsamplingStep() {
+        assertEquals(1, ImageHashServiceImpl.subsamplingStep(16, 16));
+        assertEquals(1, ImageHashServiceImpl.subsamplingStep(560, 420));
+        assertEquals(3, ImageHashServiceImpl.subsamplingStep(1024, 768));
+        assertEquals(15, ImageHashServiceImpl.subsamplingStep(6000, 4000));
+        // a wide panorama is not concerned
+        assertEquals(3, ImageHashServiceImpl.subsamplingStep(8000, 1000));
+
+        for (var size : new int[][] { { 1000, 100_000 }, { 100_000, 1000 }, { 100, 100_000 }, { 300, 3_000_000 } }) {
+            var step = ImageHashServiceImpl.subsamplingStep(size[0], size[1]);
+            var pixels = (long) Math.ceilDiv(size[0], step) * Math.ceilDiv(size[1], step);
+            assertTrue(size[0] + "x" + size[1] + " decodes " + pixels + " pixels at step " + step,
+                    pixels <= ImageHashServiceImpl.MAX_READ_PIXELS);
+        }
+    }
+
     @Test
     public void testDegenerate() {
         var blank = TestImages.uniform(Color.WHITE, 560, 420);
