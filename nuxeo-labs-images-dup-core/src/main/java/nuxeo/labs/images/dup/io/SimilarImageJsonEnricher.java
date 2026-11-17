@@ -33,13 +33,14 @@ import nuxeo.labs.images.dup.pageprovider.SimilarImagesPageProvider;
 
 /**
  * Adds the Hamming distance computed by {@link SimilarImagesPageProvider} to the documents it returns, {@code null}
- * for any other document.
+ * for any other document. {@code truncated} is the same for all the documents of a response: {@code true} when the
+ * search reached the maximum number of candidates, in which case some similar images may be missing.
  * <p>
  * Enabled with {@code enrichers-document: imageSimilarity}. Format is:
  *
  * <pre>
  * "contextParameters": {
- *   "imageSimilarity": { "distance": 3 }
+ *   "imageSimilarity": { "distance": 3, "truncated": false }
  * }
  * </pre>
  *
@@ -66,6 +67,8 @@ public class SimilarImageJsonEnricher extends AbstractJsonEnricher<DocumentModel
         if (doc.getContextData(SimilarImagesPageProvider.DISTANCE_CONTEXT_DATA) instanceof Integer distance) {
             jg.writeObjectFieldStart(NAME);
             jg.writeNumberField("distance", distance);
+            jg.writeBooleanField("truncated",
+                    Boolean.TRUE.equals(doc.getContextData(SimilarImagesPageProvider.TRUNCATED_CONTEXT_DATA)));
             jg.writeEndObject();
         } else {
             jg.writeNullField(NAME);

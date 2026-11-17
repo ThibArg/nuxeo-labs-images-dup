@@ -18,6 +18,7 @@
  */
 package nuxeo.labs.images.dup.operations;
 
+import org.nuxeo.ecm.automation.OperationContext;
 import org.nuxeo.ecm.automation.core.Constants;
 import org.nuxeo.ecm.automation.core.annotations.Context;
 import org.nuxeo.ecm.automation.core.annotations.Operation;
@@ -40,11 +41,23 @@ import nuxeo.labs.images.dup.ImageHashService;
         description = "Returns the documents readable by the current user whose image is a near duplicate of the input"
         + " document's image, closest first. Unset parameters use the configured values. threshold: max Hamming"
         + " distance (0-64). radius: 0-2, higher finds more duplicates but is slower. orientations: also find"
-        + " rotated and mirrored images. maxResults: defaults to 50.")
+        + " rotated and mirrored images. maxResults: defaults to 50. Sets the context variable imageHashTruncated to"
+        + " true when the search reached the maximum number of candidates: the result may then be incomplete.")
 public class FindSimilarImagesOp {
 
     /** @since 2025.1.0 */
     public static final String ID = "ImageHash.FindSimilar";
+
+    /**
+     * Context variable set by the operation, a {@code Boolean}: {@code true} if the search reached the maximum number
+     * of candidates, in which case some similar images may be missing from the result.
+     *
+     * @since 2025.1.0
+     */
+    public static final String TRUNCATED_CONTEXT_VARIABLE = "imageHashTruncated";
+
+    @Context
+    protected OperationContext ctx;
 
     @Context
     protected CoreSession session;
@@ -70,10 +83,12 @@ public class FindSimilarImagesOp {
     @OperationMethod
     public DocumentModelList run(DocumentModel doc) {
         var result = new DocumentModelListImpl();
-        service.findSimilar(doc, session.getPrincipal(), threshold, radius, orientations)
+        var similar = service.findSimilar(doc, session.getPrincipal(), threshold, radius, orientations);
+        ctx.put(TRUNCATED_CONTEXT_VARIABLE, similar.truncated());
+        similar.images()
                .stream()
                .limit(maxResults)
-               .map(similar -> new IdRef(similar.docId()))
+               .map(image -> new IdRef(image.docId()))
                .filter(session::exists)
                .forEach(ref -> result.add(session.getDocument(ref)));
         return result;

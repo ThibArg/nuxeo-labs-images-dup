@@ -13,5 +13,6 @@
   "imagesDup.location": "Location",
   "imagesDup.empty": "No similar images found",
   "imagesDup.error": "The similar images search failed",
+  "imagesDup.truncated": "Too many candidates: this list may be incomplete. Lower the radius or turn orientations off to narrow the search.",
   "imagesDup.invalidParameters": "Threshold must be an integer from 0 to 64, and max results an integer of at least 1"
 }

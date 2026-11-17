@@ -13,5 +13,6 @@
   "imagesDup.location": "Emplacement",
   "imagesDup.empty": "Aucune image similaire trouvée",
   "imagesDup.error": "La recherche d'images similaires a échoué",
+  "imagesDup.truncated": "Trop de candidats : cette liste est peut-être incomplète. Réduisez le rayon ou désactivez les orientations pour restreindre la recherche.",
   "imagesDup.invalidParameters": "Le seuil doit être un entier de 0 à 64, et le nombre de résultats max un entier d'au moins 1"
 }

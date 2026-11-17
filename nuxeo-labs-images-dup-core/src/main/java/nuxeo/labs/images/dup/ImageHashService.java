@@ -18,8 +18,6 @@
  */
 package nuxeo.labs.images.dup;
 
-import java.util.List;
-
 import jakarta.annotation.Nullable;
 
 import org.nuxeo.ecm.core.api.CoreSession;
@@ -77,6 +75,14 @@ public interface ImageHashService {
     String DUPLICATES_EVENT_PROPERTY = "duplicates";
 
     /**
+     * Event property, a {@code Boolean}: {@code true} if the detection reached the maximum number of candidates, in
+     * which case {@link #DUPLICATES_EVENT_PROPERTY} may be incomplete, see {@link SimilarImages#truncated()}.
+     *
+     * @since 2025.1.0
+     */
+    String DUPLICATES_TRUNCATED_EVENT_PROPERTY = "duplicatesTruncated";
+
+    /**
      * Default maximum number of similar documents returned to a caller.
      *
      * @since 2025.1.0
@@ -121,6 +127,9 @@ public interface ImageHashService {
     /**
      * Returns the documents readable by the principal whose image is a near duplicate of the document's one, closest
      * first. {@code null} parameters use the configured search values.
+     * <p>
+     * The search examines at most the configured number of candidates. Beyond it the result is
+     * {@link SimilarImages#truncated() truncated}: callers must not present it as complete.
      *
      * @param threshold max Hamming distance, out of 64 bits
      * @param radius 0 to 2, see {@link HashBands}
@@ -129,6 +138,6 @@ public interface ImageHashService {
      *             {@link #updateHashAndDetectDuplicates}
      * @since 2025.1.0
      */
-    List<SimilarImage> findSimilar(DocumentModel doc, NuxeoPrincipal principal, @Nullable Integer threshold,
+    SimilarImages findSimilar(DocumentModel doc, NuxeoPrincipal principal, @Nullable Integer threshold,
             @Nullable Integer radius, @Nullable Boolean orientations);
 }

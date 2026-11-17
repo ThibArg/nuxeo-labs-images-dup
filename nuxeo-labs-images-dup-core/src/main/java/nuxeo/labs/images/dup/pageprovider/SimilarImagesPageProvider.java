@@ -46,7 +46,8 @@ import nuxeo.labs.images.dup.ImageHashService;
  * <p>
  * Named parameters: {@value #DOC_ID_PARAM} (the page is empty without it), {@value #THRESHOLD_PARAM},
  * {@value #RADIUS_PARAM}, {@value #ORIENTATIONS_PARAM} and {@value #LIMIT_PARAM}. Blank values use the configured
- * defaults. The distance of each returned document is put in its context data under {@link #DISTANCE_CONTEXT_DATA}.
+ * defaults. The distance of each returned document is put in its context data under {@link #DISTANCE_CONTEXT_DATA},
+ * and whether the search was truncated under {@link #TRUNCATED_CONTEXT_DATA}.
  *
  * @since 2025.1.0
  */
@@ -83,9 +84,19 @@ public class SimilarImagesPageProvider extends AbstractPageProvider<DocumentMode
      */
     public static final String DISTANCE_CONTEXT_DATA = "imageHashDistance";
 
+    /**
+     * Context data of each returned document, a {@link Boolean}: {@code true} if the search reached the maximum number
+     * of candidates, see {@link #isTruncated()}.
+     *
+     * @since 2025.1.0
+     */
+    public static final String TRUNCATED_CONTEXT_DATA = "imageHashTruncated";
+
     protected static final int SC_BAD_REQUEST = 400;
 
     protected List<DocumentModel> currentPageDocuments;
+
+    protected boolean truncated;
 
     /**
      * @since 2025.1.0
@@ -96,6 +107,17 @@ public class SimilarImagesPageProvider extends AbstractPageProvider<DocumentMode
             currentPageDocuments = fetchCurrentPage();
         }
         return currentPageDocuments;
+    }
+
+    /**
+     * Returns {@code true} if the search of the current page reached the maximum number of candidates: some similar
+     * images may be missing, see {@link nuxeo.labs.images.dup.SimilarImages#truncated()}.
+     *
+     * @since 2025.1.0
+     */
+    public boolean isTruncated() {
+        getCurrentPage();
+        return truncated;
     }
 
     @Override
@@ -128,6 +150,7 @@ public class SimilarImagesPageProvider extends AbstractPageProvider<DocumentMode
     protected List<DocumentModel> fetchCurrentPage() {
         var params = getNamedParameters();
         var docId = params.get(DOC_ID_PARAM);
+        truncated = false;
         if (docId == null || docId.isBlank()) {
             setResultsCount(0);
             return List.of();
@@ -140,9 +163,10 @@ public class SimilarImagesPageProvider extends AbstractPageProvider<DocumentMode
 
         var session = getCoreSession();
         var doc = session.getDocument(new IdRef(docId.strip()));
-        var similar = Framework.getService(ImageHashService.class)
-                               .findSimilar(doc, session.getPrincipal(), threshold, radius, orientations);
-        similar = similar.subList(0, Math.min(similar.size(), limit));
+        var result = Framework.getService(ImageHashService.class)
+                              .findSimilar(doc, session.getPrincipal(), threshold, radius, orientations);
+        truncated = result.truncated();
+        var similar = result.images().subList(0, Math.min(result.images().size(), limit));
         setResultsCount(similar.size());
 
         var offset = getCurrentPageOffset();
@@ -158,6 +182,7 @@ public class SimilarImagesPageProvider extends AbstractPageProvider<DocumentMode
             if (session.exists(ref) && session.hasPermission(ref, SecurityConstants.READ)) {
                 var similarDoc = session.getDocument(ref);
                 similarDoc.putContextData(DISTANCE_CONTEXT_DATA, image.distance());
+                similarDoc.putContextData(TRUNCATED_CONTEXT_DATA, truncated);
                 docs.add(similarDoc);
             }
         }

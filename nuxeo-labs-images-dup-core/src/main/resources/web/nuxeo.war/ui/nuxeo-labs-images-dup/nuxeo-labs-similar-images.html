@@ -44,7 +44,8 @@ Document tab listing the documents whose image is similar to the current one, cl
         width: 140px;
       }
 
-      .error {
+      .error,
+      .warning {
         color: var(--nuxeo-warn-text, #de350b);
         margin-bottom: 8px;
       }
@@ -112,6 +113,7 @@ Document tab listing the documents whose image is similar to the current one, cl
     </div>
 
     <div class="error" hidden$="[[!_error]]">[[_error]]</div>
+    <div class="warning" hidden$="[[!_truncated]]">[[i18n('imagesDup.truncated')]]</div>
 
     <!-- every tab page is rendered even when hidden: only search once the tab is shown -->
     <template is="dom-if" if="[[visible]]">
@@ -222,6 +224,11 @@ Document tab listing the documents whose image is similar to the current one, cl
           type: String,
           value: ''
         },
+        // the search reached the max number of candidates: the list may be incomplete
+        _truncated: {
+          type: Boolean,
+          value: false
+        },
         _radiusOptions: {
           type: Array,
           computed: '_computeRadiusOptions(i18n)'
@@ -327,10 +334,16 @@ Document tab listing the documents whose image is similar to the current one, cl
 
       _onUpdate: function() {
         this._error = '';
+        // the page provider response has no field for it: the flag comes with each returned document
+        this._truncated = (this.$.provider.currentPage || []).some(function(item) {
+          var similarity = item && item.contextParameters && item.contextParameters.imageSimilarity;
+          return !!(similarity && similarity.truncated);
+        });
       },
 
       _onError: function() {
         this._error = this.i18n('imagesDup.error');
+        this._truncated = false;
       },
 
       _distance: function(item) {

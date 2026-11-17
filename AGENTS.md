@@ -244,6 +244,11 @@ paths.
   `saveDocument` fail for documents **named `unsavable`**, with a bubbling exception that does not mark
   the transaction rollback-only. It is what exercises the per-document `catch` of the two loops; the
   unreadable view alone is absorbed by `readImage`.
+- `testCandidateCapKeepsTheClosestCandidatesAndIsReported` deploys `test-few-candidates-contrib.xml` on
+  the method (`maxCandidates` 5) and builds its candidates with `createHashed`, which writes the three
+  `imgh:*` properties directly on `File` documents: 16 decoys one bit away on band 0 and inverted
+  elsewhere, indexed **before** the real duplicate so that an unsorted capped query leaves it out. It
+  **did fail** (empty result) before the tiered re-query.
 - The two `testFailingSearch*` tests deploy `test-failing-search-contrib.xml` **on the method**
   (`maxCandidates` 20000, above the `max_result_window` of the embedded index, so every candidate query is
   rejected). The hot deploy costs about 3 s per test and is undone afterwards: `testHashPropertiesAreSecured`
@@ -321,8 +326,19 @@ paths.
 - `ImageHashListener` writes with `CoreInstance.getCoreSessionSystem(...)` so the hash is stored even
   when the triggering user cannot write the document, but the duplicate **search** uses the triggering
   principal, so the fired event only lists duplicates that user can read.
-- `maxCandidates` (default 10000) is a page limit, not a total. Exceeding it only logs a warning and
-  silently misses duplicates. It must stay <= the search index `max_result_window`.
+- `maxCandidates` (default 10000) is a page limit, not a total, and must stay <= the search index
+  `max_result_window`. **Reaching it is reported, never silent** (review finding H1): `search()` returns
+  `SimilarImages(images, truncated)`, and every entry point passes the flag on: the
+  `imageHashTruncated` context variable of the operation, `SimilarImagesPageProvider.isTruncated()` plus
+  the `imageHashTruncated` context data read by the enricher, `duplicatesTruncated` on the event, the
+  tab warning. Keep all of them when touching `findSimilar`.
+- **Tiered re-query on overflow.** The band query has no sort and a `terms` filter scores every hit
+  alike, so a capped response is an arbitrary subset. When the single query returns `maxCandidates`
+  hits, `search()` discards it and queries again per radius, 0 first, each with the remaining budget
+  (`fetchCandidates`). Below the cap nothing changes: one query. `hits < limit` is the completeness
+  test on purpose, not `getTotal()`: totals stop being accurate at 10000 on the engines. Tiers are not
+  made disjoint with a `NOT IN`: a document can come back in a later tier, it is deduplicated by id and
+  only wastes a little of that tier's limit.
 - `SearchQuery` default limit is 10 — always set `.limit(...)` explicitly.
 - `PICTURE_VIEWS_GENERATION_DONE_EVENT` is imported from the **deprecated** `PictureViewsGenerationWork`.
   The same `"pictureViewsGenerationDone"` constant exists on the non-deprecated `RecomputeViewsAction`.
@@ -352,6 +368,11 @@ and `imagehash-webui-contrib.xml`. Web UI is only an `<optional-dependencies>` o
 - **Distance**: the provider puts it in each document's context data and `SimilarImageJsonEnricher`
   (`imageSimilarity`) writes it. This works only because the REST writer serializes the very instances
   returned by `getCurrentPage()`.
+- **The truncation flag travels the same way, per document**, because a paginable JSON response has no
+  field a provider can add (`DefaultListJsonWriter.java:145-165`) and `nuxeo-page-provider` copies a fixed
+  list of response fields. Consequence: **an empty truncated page cannot say so** over REST or in the
+  tab; only the Java API, the operation variable, the event and the log can. `errorMessage` with
+  `hasError=false` was considered and rejected as a misuse.
 - **`<require>all</require>` in the deployment fragment, never `<require>org.nuxeo.web.ui</require>`.**
   The "all" marker (`FragmentDescriptor.ALL`) orders the fragment after Web UI's own, so the i18n
   `append` merges into Web UI's `messages.json` (`AppendCommand` merges JSON). Requiring the Web UI

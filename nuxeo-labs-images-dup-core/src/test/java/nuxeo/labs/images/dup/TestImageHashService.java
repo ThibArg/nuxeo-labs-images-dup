@@ -20,6 +20,7 @@ package nuxeo.labs.images.dup;
 
 import static nuxeo.labs.images.dup.ImageHashService.BANDS_PROPERTY;
 import static nuxeo.labs.images.dup.ImageHashService.DUPLICATES_EVENT_PROPERTY;
+import static nuxeo.labs.images.dup.ImageHashService.DUPLICATES_TRUNCATED_EVENT_PROPERTY;
 import static nuxeo.labs.images.dup.ImageHashService.IMAGE_HASH_FACET;
 import static nuxeo.labs.images.dup.ImageHashService.PHASH_PROPERTY;
 import static nuxeo.labs.images.dup.ImageHashService.SIGNATURE_PROPERTY;
@@ -184,6 +185,7 @@ public class TestImageHashService {
         assertEquals(resized.getId(), ctx.getSourceDocument().getId());
         var duplicates = (Map<String, Integer>) ctx.getProperty(DUPLICATES_EVENT_PROPERTY);
         assertEquals(Set.of(first.getId()), duplicates.keySet());
+        assertEquals(Boolean.FALSE, ctx.getProperty(DUPLICATES_TRUNCATED_EVENT_PROPERTY));
 
         // views generated again with the same image: hash unchanged, no new event
         DuplicatedImageCaptureListener.clear();
@@ -223,6 +225,7 @@ public class TestImageHashService {
         var result = (DocumentModelList) automationService.run(ctx, FindSimilarImagesOp.ID);
         assertEquals(Set.of(resized.getId(), recompressed.getId()),
                 result.stream().map(DocumentModel::getId).collect(Collectors.toSet()));
+        assertEquals(Boolean.FALSE, ctx.get(FindSimilarImagesOp.TRUNCATED_CONTEXT_VARIABLE));
 
         ctx = new OperationContext(session);
         ctx.setInput(first);
@@ -247,7 +250,9 @@ public class TestImageHashService {
 
         var ctx = CtxBuilder.enrichDoc(SimilarImageJsonEnricher.NAME).get();
         var json = MarshallerHelper.objectToJson(docs.getFirst(), ctx);
-        assertTrue(json, json.contains("\"imageSimilarity\":{\"distance\":" + distances.getFirst() + "}"));
+        assertTrue(json, json.contains(
+                "\"imageSimilarity\":{\"distance\":" + distances.getFirst() + ",\"truncated\":false}"));
+        assertFalse(((SimilarImagesPageProvider) provider).isTruncated());
         json = MarshallerHelper.objectToJson(session.getDocument(first.getRef()), ctx);
         assertTrue(json, json.contains("\"imageSimilarity\":null"));
     }
@@ -324,7 +329,7 @@ public class TestImageHashService {
         assertTrue(blank2.hasFacet(IMAGE_HASH_FACET));
         assertTrue(ArrayUtils.isEmpty((Object[]) blank2.getPropertyValue(BANDS_PROPERTY)));
         assertTrue(DuplicatedImageCaptureListener.getEvents().isEmpty());
-        assertTrue(service.findSimilar(blank2, session.getPrincipal(), null, null, null).isEmpty());
+        assertEquals(SimilarImages.NONE, service.findSimilar(blank2, session.getPrincipal(), null, null, null));
     }
 
     @Test
@@ -478,6 +483,71 @@ public class TestImageHashService {
     }
 
     /**
+     * More candidates than {@code maxCandidates}: the cap must drop the least likely candidates, not arbitrary ones,
+     * and every entry point must say that the result may be incomplete.
+     * <p>
+     * 16 decoys share no band with the reference, each has its first band 1 bit away and the three others inverted:
+     * candidates at radius 1, at a distance of 49. They are indexed before the identical copy, the only real
+     * duplicate, which an unsorted query cut at 5 hits therefore leaves out.
+     */
+    @Test
+    @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-few-candidates-contrib.xml")
+    @SuppressWarnings("unchecked")
+    public void testCandidateCapKeepsTheClosestCandidatesAndIsReported() throws OperationException, IOException {
+        var reference = createPicture("/", "reference", original);
+        viewsGenerated(reference);
+        var hash = PHash.fromHex((String) session.getDocument(reference.getRef()).getPropertyValue(PHASH_PROPERTY));
+        for (var bit = 0; bit < 16; bit++) {
+            createHashed("decoy" + bit, ~hash ^ 0xFFFFL << 48 ^ 1L << (48 + bit));
+        }
+        txFeature.nextTransaction();
+        var copy = createPicture("/", "copy", original);
+        viewsGenerated(copy);
+
+        // the automatic detection of the copy: the reference is found among the decoys, and the event says more
+        var events = DuplicatedImageCaptureListener.getEvents();
+        assertEquals(1, events.size());
+        var eventContext = events.getFirst().getContext();
+        assertEquals(Set.of(reference.getId()),
+                ((Map<String, Integer>) eventContext.getProperty(DUPLICATES_EVENT_PROPERTY)).keySet());
+        assertEquals(Boolean.TRUE, eventContext.getProperty(DUPLICATES_TRUNCATED_EVENT_PROPERTY));
+
+        var similar = service.findSimilar(reference, session.getPrincipal(), null, 1, Boolean.FALSE);
+        assertEquals(Set.of(copy.getId()), ids(similar));
+        assertTrue(similar.truncated());
+        // radius 0 only queries the exact bands: one candidate, nothing is cut
+        similar = service.findSimilar(reference, session.getPrincipal(), null, 0, Boolean.FALSE);
+        assertEquals(Set.of(copy.getId()), ids(similar));
+        assertFalse(similar.truncated());
+
+        var ctx = new OperationContext(session);
+        ctx.setInput(session.getDocument(reference.getRef()));
+        var docs = (DocumentModelList) automationService.run(ctx, FindSimilarImagesOp.ID,
+                Map.of("radius", 1, "orientations", false));
+        assertEquals(Set.of(copy.getId()), docIds(docs));
+        assertEquals(Boolean.TRUE, ctx.get(FindSimilarImagesOp.TRUNCATED_CONTEXT_VARIABLE));
+
+        var provider = similarImages(session,
+                Map.of(DOC_ID_PARAM, reference.getId(), RADIUS_PARAM, "1", ORIENTATIONS_PARAM, "false"), 40, 0);
+        assertEquals(Set.of(copy.getId()), docIds(provider.getCurrentPage()));
+        assertTrue(((SimilarImagesPageProvider) provider).isTruncated());
+        var json = MarshallerHelper.objectToJson(provider.getCurrentPage().getFirst(),
+                CtxBuilder.enrichDoc(SimilarImageJsonEnricher.NAME).get());
+        assertTrue(json, json.contains("\"imageSimilarity\":{\"distance\":0,\"truncated\":true}"));
+    }
+
+    /** A document carrying the given hash, as the service stores it, without any picture. */
+    protected DocumentModel createHashed(String name, long hash) {
+        var doc = session.createDocumentModel("/", name, "File");
+        doc.addFacet(IMAGE_HASH_FACET);
+        doc.setPropertyValue(PHASH_PROPERTY, PHash.toHex(hash));
+        doc.setPropertyValue(BANDS_PROPERTY,
+                new ArrayList<>(HashBands.bands(((ImageHashServiceImpl) service).bandPrefix, hash)));
+        doc.setPropertyValue(SIGNATURE_PROPERTY, service.getSignature());
+        return session.createDocument(doc);
+    }
+
+    /**
      * A user who can write a picture must not be able to hide it from detection, or to forge its hash.
      * <p>
      * The secured check reads the login of the current thread, not the principal of the session, so opening a session
@@ -577,8 +647,8 @@ public class TestImageHashService {
         txFeature.nextTransaction();
     }
 
-    protected static Set<String> ids(List<SimilarImage> similar) {
-        return similar.stream().map(SimilarImage::docId).collect(Collectors.toSet());
+    protected static Set<String> ids(SimilarImages similar) {
+        return similar.images().stream().map(SimilarImage::docId).collect(Collectors.toSet());
     }
 
     /** Builds the provider the way the REST search endpoint does, named parameters included. */

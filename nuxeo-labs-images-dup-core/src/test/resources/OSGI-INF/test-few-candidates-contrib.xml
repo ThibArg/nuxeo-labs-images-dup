@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.test.few.candidates">
+
+  <require>nuxeo.labs.images.dup.ImageHashService</require>
+
+  <!-- A cap low enough to be reached with a handful of documents -->
+  <extension target="nuxeo.labs.images.dup.ImageHashService" point="configuration">
+    <configuration>
+      <maxCandidates>5</maxCandidates>
+    </configuration>
+  </extension>
+
+</component>

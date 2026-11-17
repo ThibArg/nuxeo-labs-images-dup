@@ -33,9 +33,12 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.zip.CRC32;
 
 import javax.imageio.ImageIO;
@@ -170,7 +173,7 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
             }
             return;
         }
-        List<SimilarImage> duplicates;
+        SimilarImages duplicates;
         try {
             duplicates = search(doc, principal, computed, index, config.isDetectionOrientations(),
                     config.getDetectionRadius(), config.getThreshold());
@@ -179,7 +182,7 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
             log.error("The hash of document: {} is stored, but its duplicate detection failed", doc.getId(), e);
             return;
         }
-        if (!duplicates.isEmpty()) {
+        if (!duplicates.images().isEmpty()) {
             fireDuplicatedImage(session, doc, principal, duplicates);
         }
     }
@@ -188,11 +191,11 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
      * @since 2025.1.0
      */
     @Override
-    public List<SimilarImage> findSimilar(DocumentModel doc, NuxeoPrincipal principal, @Nullable Integer threshold,
+    public SimilarImages findSimilar(DocumentModel doc, NuxeoPrincipal principal, @Nullable Integer threshold,
             @Nullable Integer radius, @Nullable Boolean orientations) {
         var computed = compute(doc);
         if (computed == null || computed.degenerate()) {
-            return List.of();
+            return SimilarImages.NONE;
         }
         return search(doc, principal, computed, requireSearchIndex(doc.getRepositoryName()),
                 requireNonNullElse(orientations, config.isSearchOrientations()),
@@ -322,52 +325,82 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
         return true;
     }
 
-    protected List<SimilarImage> search(DocumentModel doc, NuxeoPrincipal principal, Computed computed,
+    protected SimilarImages search(DocumentModel doc, NuxeoPrincipal principal, Computed computed,
             SearchIndex index, boolean orientations, int radius, int threshold) {
         var hashes = orientations ? PHash.orientationHashes(computed.reduced()) : new long[] { computed.hash() };
+        var maxCandidates = config.getMaxCandidates();
+        // candidate document id to hash; in the usual case a single query fetches them all
+        var candidates = new LinkedHashMap<String, String>();
+        var truncated = !fetchCandidates(doc, principal, index, queryKeys(hashes, radius), maxCandidates, candidates);
+        if (truncated && radius > 0) {
+            // That query has no order: the candidates it returned are an arbitrary subset. Ask again from the exact
+            // bands outwards, each radius with what is left of the budget, so that the candidates dropped are those
+            // sharing no exact band with the hash, the least likely duplicates.
+            candidates.clear();
+            truncated = false;
+            var queried = new HashSet<String>();
+            for (var r = 0; r <= radius && !truncated; r++) {
+                var keys = queryKeys(hashes, r);
+                keys.removeAll(queried);
+                var remaining = maxCandidates - candidates.size();
+                truncated = remaining <= 0 || !fetchCandidates(doc, principal, index, keys, remaining, candidates);
+                queried.addAll(keys);
+            }
+        }
+        if (truncated) {
+            log.warn("Document: {} reached the max number of candidates: {}, some duplicates may be missed",
+                    doc.getId(), maxCandidates);
+        }
+
+        var similar = new ArrayList<SimilarImage>();
+        candidates.forEach((docId, hex) -> {
+            var candidate = PHash.fromHex(hex);
+            var distance = Arrays.stream(hashes).mapToInt(hash -> PHash.distance(hash, candidate)).min().orElseThrow();
+            if (distance <= threshold) {
+                similar.add(new SimilarImage(docId, distance));
+            }
+        });
+        similar.sort(Comparator.comparingInt(SimilarImage::distance).thenComparing(SimilarImage::docId));
+        return new SimilarImages(List.copyOf(similar), truncated);
+    }
+
+    protected Set<String> queryKeys(long[] hashes, int radius) {
         var keys = new LinkedHashSet<String>();
         for (var hash : hashes) {
             keys.addAll(HashBands.queryKeys(bandPrefix, hash, radius));
         }
+        return keys;
+    }
+
+    /**
+     * Adds to the candidates the documents holding one of the band keys, at most {@code limit} of them.
+     *
+     * @return {@code false} if the limit was reached, in which case some candidates may not have been fetched
+     */
+    protected boolean fetchCandidates(DocumentModel doc, NuxeoPrincipal principal, SearchIndex index, Set<String> keys,
+            int limit, Map<String, String> candidates) {
         var nxql = """
                 SELECT %s, %s FROM Document WHERE %s IN (%s) AND %s <> %s
                 AND ecm:isProxy = 0 AND ecm:isVersion = 0 AND ecm:isTrashed = 0
                 """.formatted(ECM_UUID, PHASH_PROPERTY, BANDS_PROPERTY,
                 keys.stream().map(NXQL::escapeString).collect(joining(",")), ECM_UUID, NXQL.escapeString(doc.getId()));
-
-        var maxCandidates = config.getMaxCandidates();
-        var query = SearchQuery.builder(nxql, principal).searchIndex(index).limit(maxCandidates).build();
+        var query = SearchQuery.builder(nxql, principal).searchIndex(index).limit(limit).build();
         var response = Framework.getService(SearchService.class).search(query);
-        if (response.getHitsCount() >= maxCandidates) {
-            log.warn("Document: {} reached the max number of candidates: {}, some duplicates may be missed",
-                    doc.getId(), maxCandidates);
-        }
-
-        var similar = new LinkedHashMap<String, SimilarImage>();
         for (var hit : response.getHitsAsMap()) {
             if (hit.get(PHASH_PROPERTY) instanceof String hex && hit.get(ECM_UUID) instanceof String docId) {
-                var candidate = PHash.fromHex(hex);
-                var distance = Arrays.stream(hashes)
-                                     .mapToInt(hash -> PHash.distance(hash, candidate))
-                                     .min()
-                                     .orElseThrow();
-                if (distance <= threshold) {
-                    similar.putIfAbsent(docId, new SimilarImage(docId, distance));
-                }
+                candidates.putIfAbsent(docId, hex);
             }
         }
-        return similar.values()
-                      .stream()
-                      .sorted(Comparator.comparingInt(SimilarImage::distance).thenComparing(SimilarImage::docId))
-                      .toList();
+        return response.getHitsCount() < limit;
     }
 
     protected void fireDuplicatedImage(CoreSession session, DocumentModel doc, NuxeoPrincipal principal,
-            List<SimilarImage> duplicates) {
+            SimilarImages duplicates) {
         var distances = new LinkedHashMap<String, Integer>();
-        duplicates.forEach(duplicate -> distances.put(duplicate.docId(), duplicate.distance()));
+        duplicates.images().forEach(duplicate -> distances.put(duplicate.docId(), duplicate.distance()));
         var ctx = new DocumentEventContext(session, principal, doc);
         ctx.setProperty(DUPLICATES_EVENT_PROPERTY, distances);
+        ctx.setProperty(DUPLICATES_TRUNCATED_EVENT_PROPERTY, duplicates.truncated());
         Framework.getService(EventService.class).fireEvent(ctx.newEvent(DUPLICATED_IMAGE_EVENT));
     }
 }

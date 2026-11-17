@@ -13,7 +13,7 @@ The duplicate search runs on a search engine client (OpenSearch or Elasticsearch
 
 ## How to Use
 
-Install the Marketplace package. New or updated Picture documents are hashed automatically after their picture views are generated. When a duplicate is detected, the plugin fires the `duplicatedImage` event.
+Install the Marketplace package. New or updated Picture documents are hashed automatically after their picture views are generated. When a duplicate is detected, the plugin fires the `duplicatedImage` event on the picture, with two properties: `duplicates`, a map of duplicate document id to Hamming distance, closest first, and `duplicatesTruncated`, `true` when the list may be incomplete, see [Candidate Limit](#candidate-limit).
 
 To search for similar images, call the `ImageHash.FindSimilar` Automation operation with a Picture document as input. Optional parameters are:
 
@@ -26,13 +26,15 @@ To search for similar images, call the `ImageHash.FindSimilar` Automation operat
 
 The first three fall back to the [configuration](#configuration), so the usual way to change them for every caller is to contribute, not to pass them on each call.
 
+The operation sets the `imageHashTruncated` context variable: `true` when the returned list may be incomplete, see [Candidate Limit](#candidate-limit).
+
 **Hamming distance** is the number of differing bits between two 64-bit hashes: `0` means identical hashes, and the lower the value, the more similar the images. `threshold` is the distance at or below which two images are considered duplicates.
 
 **Search radius** is how far the candidate query looks around the hash. The hash is split into four 16-bit bands, and candidates are the documents sharing at least one band. A higher radius also queries the variants of each band that differ by 1 bit (`radius=1`) or by 1 or 2 bits (`radius=2`), which finds more candidates but queries many more keys: 4 keys at radius 0, 68 at radius 1, 548 at radius 2. A radius `r` is guaranteed to find every image within a distance of `4r + 3`.
 
 **`threshold` and `radius` are coupled**: keep `threshold` close to `4 * radius + 3`, which is 3 at radius 0, 7 at radius 1 and 11 at radius 2. Beyond that distance a pair is found only when its differing bits happen not to be spread evenly across the four bands, so raising `threshold` alone widens the accepted distance without widening the search. The default pair, threshold `8` at radius `1`, sits one above the guarantee: around 5% of the pairs at a distance of exactly 8 are missed, which is acceptable on the last accepted distance. Raising `threshold` to 10 while leaving `radius` at 1 would miss roughly a quarter of the pairs it claims to accept, so raise `radius` to 2 as well, and pay the 548 keys.
 
-**`maxResults` does not make the search faster.** The candidate query and the distance comparison always run on the whole candidate set, then the results are sorted by distance and only then truncated. So `maxResults` only reduces the number of documents loaded from the repository and the size of the response. What drives the search cost is `radius` and `orientations`, which multiplies the number of queried keys by 8. The hard limit on the candidate set is `maxCandidates`, see [Configuration](#configuration).
+**`maxResults` does not make the search faster.** The candidate query and the distance comparison always run on the whole candidate set, then the results are sorted by distance and only then truncated. So `maxResults` only reduces the number of documents loaded from the repository and the size of the response. What drives the search cost is `radius` and `orientations`, which multiplies the number of queried keys by 8. The hard limit on the candidate set is `maxCandidates`, see [Candidate Limit](#candidate-limit).
 
 To compute or refresh hashes for existing documents, submit the `computeImageHash` bulk action with a query selecting Picture documents. Set its optional `force` parameter to `true` to recompute hashes that already use the current configuration.
 
@@ -47,6 +49,8 @@ With Web UI, documents with the Picture facet get a **Similar Images** tab. Web 
 The tab lists the near duplicates the current user can read, closest first, in the standard grid (thumbnails) and list views. The list view shows the Hamming distance of each document.
 
 The toolbar at the top tunes the search with the same parameters as the operation: **Threshold**, **Radius**, **Orientations** and **Max results**. An empty field, or **Default**, uses the configured value. Click **Search** or press Enter to run the search, **Reset** goes back to the configured values. Nothing is searched until the tab is displayed.
+
+A warning is displayed above the list when the search reached the [candidate limit](#candidate-limit) and the list may be incomplete. The warning travels with the listed documents, so it cannot be shown when the list is empty.
 
 ### REST API
 
@@ -64,7 +68,7 @@ GET /nuxeo/api/v1/search/pp/imagehash_similar_images/execute?docId=<document id>
 
 The usual paging parameters (`pageSize`, `currentPageIndex`, `offset`) apply, and invalid values return a `400`. Each page request runs the whole search again, so a `pageSize` covering `limit` avoids repeating it.
 
-Add the `imageSimilarity` enricher, for example with the `enrichers-document: imageSimilarity` header, to get the distance of each document in `contextParameters.imageSimilarity.distance`.
+Add the `imageSimilarity` enricher, for example with the `enrichers-document: imageSimilarity` header, to get the distance of each document in `contextParameters.imageSimilarity.distance`. The same object holds `truncated`, identical for every document of a response: `true` when the search reached the [candidate limit](#candidate-limit) and the result may be incomplete.
 
 ## Configuration
 
@@ -132,6 +136,24 @@ The index actually queried is the one declared as default for the repository, so
 `maxCandidates` must not exceed the index `max_result_window`, which defaults to 10000. The plugin default is exactly 10000, so lower it if you lower the window: above the window, the search engine rejects every candidate query.
 
 When the duplicate search fails during the automatic detection, because of such a rejection or because the search cluster is unavailable, the hash is still stored and the failure is logged as an error, but the `duplicatedImage` event is not fired for that picture and the detection is not replayed later.
+
+### Candidate Limit
+
+A search examines at most `maxCandidates` documents, 10000 by default. The number of candidates grows with the repository: each queried key matches about one hashed picture out of 65536, so a search fetches around `keys * pictures / 65536` candidates, and more on real photos, whose hashes are less evenly spread than this estimate assumes.
+
+| Search | Keys | Limit of 10000 reached around |
+|---|---|---|
+| Automatic detection, radius 1 | 68 | 9.6 million pictures |
+| Tab and operation defaults, radius 1 with orientations | 544 | 1.2 million pictures |
+| Radius 2 | 548 | 1.2 million pictures |
+| Radius 2 with orientations | 4384 | 150000 pictures |
+
+Beyond the limit the result is **truncated**: some similar images may be missing. The plugin then does two things.
+
+- It says so. The operation sets the `imageHashTruncated` context variable, the page provider flags each returned document through the `imageSimilarity` enricher, the tab displays a warning, the `duplicatedImage` event carries `duplicatesTruncated`, and a warning is logged.
+- It chooses what is dropped. The candidates are fetched again from the closest keys outwards: first the documents sharing an exact band with the hash, then the 1-bit variants, then the 2-bit ones, each with what is left of the limit. So every image within a distance of 3 is still found as long as the exact bands alone fit in the limit, and the candidates dropped are the least likely duplicates. This costs up to three more queries, only for the searches that reach the limit.
+
+To get complete results on a large repository, lower `radius` or turn `orientations` off, which divides the number of keys by 8. Raising `maxCandidates` is only possible up to the index `max_result_window`.
 
 ### Keeping the Hash Properties Out of Fulltext
 
