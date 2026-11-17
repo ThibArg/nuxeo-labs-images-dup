@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.test.failing.save">
+
+  <extension target="org.nuxeo.ecm.core.event.EventServiceComponent" point="listener">
+    <listener name="failingSave" async="false" postCommit="false"
+      class="nuxeo.labs.images.dup.FailingSaveListener">
+      <event>beforeDocumentModification</event>
+    </listener>
+  </extension>
+
+</component>

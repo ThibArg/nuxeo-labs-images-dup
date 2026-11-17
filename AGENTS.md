@@ -234,6 +234,16 @@ paths.
   never the views-generation components, so **ImageMagick is not required**. Picture views are faked by
   writing `picture:views` directly (`createPicture`) and `pictureViewsGenerationDone` is fired by hand
   (`viewsGenerated`). Keep it that way.
+- `TestImages.unreadablePng()` is the fixture for a view that fails with a **runtime** exception: an RGB
+  PNG whose IHDR width is patched to 16 million pixels, on which the reader throws
+  `IllegalArgumentException: Invalid scanline stride` (JDK 21.0.3). `ImageIO.read()` wraps it into an
+  `IIOException`, so `testUnreadableViewFallsBackToNextView` first asserts the exception type on
+  `ImageHashServiceImpl.readSubsampled` itself: if a JDK update turns it into an `IOException`, the test
+  fails there instead of passing trivially.
+- `FailingSaveListener` (`test-failing-save-listener-contrib.xml`, deployed on the whole class) makes
+  `saveDocument` fail for documents **named `unsavable`**, with a bubbling exception that does not mark
+  the transaction rollback-only. It is what exercises the per-document `catch` of the two loops; the
+  unreadable view alone is absorbed by `readImage`.
 - `DuplicatedImageCaptureListener` is a **static** event collector. Call `clear()` in `@Before` or tests
   leak into each other.
 - `txFeature.nextTransaction()` is mandatory after firing events: it both drains the async post-commit
@@ -284,6 +294,14 @@ paths.
   a `computeImageHash` command submitted from Java for a non-administrator writes nothing.
   `testHashPropertiesAreSecured` pushes john with `NuxeoLoginContext.create(JOHN).login()`; opening a
   session for john alone leaves the thread logged in as Administrator and the write is accepted.
+- **Per-document failure isolation, three places (review finding M3).** `readImage` catches
+  `IOException | RuntimeException` per view: the JDK PNG reader throws `IllegalArgumentException` on some
+  headers, and a blob provider can throw unchecked. The loops of `ImageHashListener` and
+  `ComputeImageHashAction` catch `RuntimeException` per document, with **two rethrows to keep**:
+  `ConcurrentUpdateException` (the only failure `AbstractWork` retries, and the stream policy retries the
+  batch), and anything caught while `TransactionHelper.isTransactionMarkedRollback()` is true, because
+  swallowing it would end in a silent rollback of the whole batch or bundle reported as a success. The
+  bulk action also reports the document through `delta.inError(...)`, so it shows in `errorCount`.
 - `ImageHashListener` writes with `CoreInstance.getCoreSessionSystem(...)` so the hash is stored even
   when the triggering user cannot write the document, but the duplicate **search** uses the triggering
   principal, so the fired event only lists duplicates that user can read.

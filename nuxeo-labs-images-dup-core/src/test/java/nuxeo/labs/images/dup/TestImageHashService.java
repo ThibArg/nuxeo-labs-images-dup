@@ -30,6 +30,7 @@ import static nuxeo.labs.images.dup.pageprovider.SimilarImagesPageProvider.ORIEN
 import static nuxeo.labs.images.dup.pageprovider.SimilarImagesPageProvider.RADIUS_PARAM;
 import static nuxeo.labs.images.dup.pageprovider.SimilarImagesPageProvider.THRESHOLD_PARAM;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.nuxeo.ecm.platform.picture.PictureViewsGenerationWork.PICTURE_VIEWS_GENERATION_DONE_EVENT;
@@ -37,6 +38,7 @@ import static org.nuxeo.ecm.platform.query.api.PageProviderSpec.CORE_SESSION_PRO
 
 import java.awt.Color;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.Serializable;
 import java.time.Duration;
@@ -113,6 +115,7 @@ import nuxeo.labs.images.dup.pageprovider.SimilarImagesPageProvider;
 @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core")
 @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-opensearch-mapping-contrib.xml")
 @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-capture-listener-contrib.xml")
+@Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-failing-save-listener-contrib.xml")
 public class TestImageHashService {
 
     protected static final NuxeoPrincipal JOHN = new UserPrincipal("john", List.of(), false, false);
@@ -386,6 +389,65 @@ public class TestImageHashService {
         }
     }
 
+    /** The image reader throws a runtime exception on the first view, not an {@link IOException}. */
+    @Test
+    public void testUnreadableViewFallsBackToNextView() {
+        // checked on the service's own reading code: ImageIO.read() would wrap it into an IIOException
+        var reader = (ImageHashServiceImpl) service;
+        assertThrows(IllegalArgumentException.class,
+                () -> reader.readSubsampled(new ByteArrayInputStream(TestImages.unreadablePng())));
+
+        var reference = createPicture("/", "reference", original);
+        var doc = createPicture("/", "fallback", unreadableView("Small"), jpegView("Medium", "fallback", original));
+        viewsGenerated(reference, doc);
+
+        doc = session.getDocument(doc.getRef());
+        assertTrue("the picture must be hashed from its Medium view", doc.hasFacet(IMAGE_HASH_FACET));
+        assertEquals(session.getDocument(reference.getRef()).getPropertyValue(PHASH_PROPERTY),
+                doc.getPropertyValue(PHASH_PROPERTY));
+    }
+
+    /** One picture that cannot be read and one that cannot be saved, in the same bundle as two valid ones. */
+    @Test
+    public void testFailingPicturesDoNotFailTheirEventBundle() {
+        var unreadable = createPicture("/", "unreadable", unreadableView("Small"));
+        var first = createPicture("/", "first", original);
+        var unsavable = createPicture("/", FailingSaveListener.DOC_NAME, original);
+        var resized = createPicture("/", "resized", TestImages.resize(original, 280, 210));
+        viewsGenerated(unreadable, first, unsavable, resized);
+
+        assertTrue(session.getDocument(first.getRef()).hasFacet(IMAGE_HASH_FACET));
+        assertTrue(session.getDocument(resized.getRef()).hasFacet(IMAGE_HASH_FACET));
+        assertFalse(session.getDocument(unreadable.getRef()).hasFacet(IMAGE_HASH_FACET));
+        assertFalse(session.getDocument(unsavable.getRef()).hasFacet(IMAGE_HASH_FACET));
+    }
+
+    /** Same as above, in the same batch of the bulk action. */
+    @Test
+    public void testFailingPicturesDoNotFailTheirBulkBatch() throws InterruptedException {
+        var unreadable = createPicture("/", "unreadable", unreadableView("Small"));
+        var first = createPicture("/", "first", original);
+        var unsavable = createPicture("/", FailingSaveListener.DOC_NAME, original);
+        var resized = createPicture("/", "resized", TestImages.resize(original, 280, 210));
+        txFeature.nextTransaction();
+
+        var commandId = bulkService.submit(new BulkCommand.Builder(ComputeImageHashAction.ACTION_NAME,
+                "SELECT * FROM Picture", session.getPrincipal().getName()).repository(session.getRepositoryName())
+                                                                           .build());
+        assertTrue(bulkService.await(commandId, Duration.ofSeconds(60)));
+        var status = bulkService.getStatus(commandId);
+        assertEquals(BulkStatus.State.COMPLETED, status.getState());
+        txFeature.nextTransaction();
+
+        assertTrue(session.getDocument(first.getRef()).hasFacet(IMAGE_HASH_FACET));
+        assertTrue(session.getDocument(resized.getRef()).hasFacet(IMAGE_HASH_FACET));
+        assertFalse(session.getDocument(unreadable.getRef()).hasFacet(IMAGE_HASH_FACET));
+        assertFalse(session.getDocument(unsavable.getRef()).hasFacet(IMAGE_HASH_FACET));
+        // the failed save is reported, the unreadable picture is only skipped
+        assertEquals(1, status.getErrorCount());
+        assertTrue(status.getErrorMessage(), status.getErrorMessage().contains(unsavable.getId()));
+    }
+
     /**
      * A user who can write a picture must not be able to hide it from detection, or to forge its hash.
      * <p>
@@ -446,16 +508,36 @@ public class TestImageHashService {
     }
 
     protected DocumentModel createPicture(String parentPath, String name, BufferedImage image) {
+        return createPicture(parentPath, name, jpegView("Small", name, image));
+    }
+
+    @SafeVarargs
+    protected final DocumentModel createPicture(String parentPath, String name, Map<String, Serializable>... views) {
+        var doc = session.createDocumentModel(parentPath, name, "Picture");
+        doc.setPropertyValue("picture:views", new ArrayList<>(List.of(views)));
+        return session.createDocument(doc);
+    }
+
+    protected static Map<String, Serializable> jpegView(String title, String name, BufferedImage image) {
         var blob = new ByteArrayBlob(TestImages.jpeg(image, 0.9f), "image/jpeg");
         blob.setFilename(name + ".jpg");
+        return view(title, blob, image.getWidth(), image.getHeight());
+    }
+
+    /** A view the image reader fails on with a runtime exception, see {@link TestImages#unreadablePng()}. */
+    protected static Map<String, Serializable> unreadableView(String title) {
+        var blob = new ByteArrayBlob(TestImages.unreadablePng(), "image/png");
+        blob.setFilename("unreadable.png");
+        return view(title, blob, 64, 48);
+    }
+
+    protected static Map<String, Serializable> view(String title, ByteArrayBlob blob, int width, int height) {
         var view = new HashMap<String, Serializable>();
-        view.put("title", "Small");
-        view.put("width", image.getWidth());
-        view.put("height", image.getHeight());
-        view.put("content", (Serializable) blob);
-        var doc = session.createDocumentModel(parentPath, name, "Picture");
-        doc.setPropertyValue("picture:views", new ArrayList<>(List.of(view)));
-        return session.createDocument(doc);
+        view.put("title", title);
+        view.put("width", width);
+        view.put("height", height);
+        view.put("content", blob);
+        return view;
     }
 
     protected void viewsGenerated(DocumentModel... docs) {

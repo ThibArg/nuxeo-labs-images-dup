@@ -126,6 +126,23 @@ public final class TestImages {
         return bytes.toByteArray();
     }
 
+    /**
+     * A PNG the JDK reader rejects with a runtime exception, not an {@link IOException}: its header declares a width
+     * of 16 million pixels, and the reader fails on the scanline size before reading any pixel.
+     */
+    public static byte[] unreadablePng() {
+        var bytes = new ByteArrayOutputStream();
+        try {
+            ImageIO.write(sample(1, 64, 48), "png", bytes);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        var png = bytes.toByteArray();
+        // most significant byte of the IHDR width
+        png[16] = 1;
+        return png;
+    }
+
     public static BufferedImage recompress(BufferedImage image, float quality) {
         try (var input = new MemoryCacheImageInputStream(new ByteArrayInputStream(jpeg(image, quality)))) {
             var readers = ImageIO.getImageReaders(input);

@@ -259,7 +259,9 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
                     return image;
                 }
                 log.warn("No image reader for view: {} of document: {}", title, doc.getId());
-            } catch (IOException e) {
+            } catch (IOException | RuntimeException e) {
+                // runtime exceptions too: image readers throw some on corrupted or oversized files, and so can a
+                // blob provider. An unreadable view must neither prevent trying the next one nor fail the caller.
                 log.warn("Cannot read view: {} of document: {}", title, doc.getId(), e);
             }
         }

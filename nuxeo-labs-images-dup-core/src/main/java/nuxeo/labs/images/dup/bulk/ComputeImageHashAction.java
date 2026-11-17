@@ -27,12 +27,16 @@ import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.nuxeo.ecm.core.api.ConcurrentUpdateException;
 import org.nuxeo.ecm.core.api.CoreSession;
 import org.nuxeo.ecm.core.api.DocumentModel;
 import org.nuxeo.ecm.core.bulk.action.computation.AbstractBulkComputation;
 import org.nuxeo.lib.stream.computation.Topology;
 import org.nuxeo.runtime.api.Framework;
 import org.nuxeo.runtime.stream.StreamProcessorTopology;
+import org.nuxeo.runtime.transaction.TransactionHelper;
 
 import nuxeo.labs.images.dup.ImageHashService;
 
@@ -42,6 +46,8 @@ import nuxeo.labs.images.dup.ImageHashService;
  * @since 2025.1.0
  */
 public class ComputeImageHashAction implements StreamProcessorTopology {
+
+    private static final Logger log = LogManager.getLogger(ComputeImageHashAction.class);
 
     /** @since 2025.1.0 */
     public static final String ACTION_NAME = "computeImageHash";
@@ -95,7 +101,20 @@ public class ComputeImageHashAction implements StreamProcessorTopology {
             var service = Framework.getService(ImageHashService.class);
             for (var doc : loadDocuments(session, ids)) {
                 if (doc.hasFacet(PICTURE_FACET) && !doc.isProxy() && !doc.isVersion()) {
-                    service.updateHash(session, doc, force);
+                    try {
+                        service.updateHash(session, doc, force);
+                    } catch (ConcurrentUpdateException e) {
+                        // let the stream policy retry the batch
+                        throw e;
+                    } catch (RuntimeException e) {
+                        if (TransactionHelper.isTransactionMarkedRollback()) {
+                            // nothing of this batch can be committed anymore, do not hide it
+                            throw e;
+                        }
+                        // one failing picture must not leave the rest of its batch, then of its bucket, unhashed
+                        log.warn("Cannot hash document: {}", doc.getId(), e);
+                        delta.inError("Cannot hash document: %s, %s".formatted(doc.getId(), e.getMessage()));
+                    }
                 }
             }
         }

@@ -23,6 +23,7 @@ import static org.nuxeo.ecm.platform.picture.PictureViewsGenerationWork.PICTURE_
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.nuxeo.ecm.core.api.ConcurrentUpdateException;
 import org.nuxeo.ecm.core.api.CoreInstance;
 import org.nuxeo.ecm.core.api.CoreSession;
 import org.nuxeo.ecm.core.api.DocumentModel;
@@ -33,6 +34,7 @@ import org.nuxeo.ecm.core.event.PostCommitEventListener;
 import org.nuxeo.ecm.core.event.impl.DocumentEventContext;
 import org.nuxeo.ecm.core.event.impl.ShallowDocumentModel;
 import org.nuxeo.runtime.api.Framework;
+import org.nuxeo.runtime.transaction.TransactionHelper;
 
 import nuxeo.labs.images.dup.ImageHashService;
 
@@ -69,6 +71,16 @@ public class ImageHashListener implements PostCommitEventListener {
                         requireNonNullElse(ctx.getPrincipal(), session.getPrincipal()));
             } catch (DocumentNotFoundException e) {
                 log.debug("Document: {} was removed before being hashed", source::getId);
+            } catch (ConcurrentUpdateException e) {
+                // the only failure the work manager retries
+                throw e;
+            } catch (RuntimeException e) {
+                if (TransactionHelper.isTransactionMarkedRollback()) {
+                    // nothing of this bundle can be committed anymore, do not hide it
+                    throw e;
+                }
+                // one failing picture must not discard the hashes of the other pictures of the bundle
+                log.error("Cannot hash document: {}", source.getId(), e);
             }
         }
     }

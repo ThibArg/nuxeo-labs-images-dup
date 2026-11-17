@@ -38,6 +38,8 @@ To compute or refresh hashes for existing documents, submit the `computeImageHas
 
 The hash is stored in three properties of the `ImageHash` facet, `imgh:phash`, `imgh:bands` and `imgh:signature`. They are declared `secured`: only administrators and the system can write them, so a user who can edit a picture cannot blank or forge its hash to hide it from detection. Custom code calling `ImageHashService.updateHash` must therefore run under an administrator or system login.
 
+A picture that cannot be hashed does not stop the others. A view that cannot be decoded is logged and the next configured view is tried; a picture with no readable view is left without a hash. In the bulk action, a picture whose hash cannot be saved is logged and counted in the `errorCount` of the command status, and the rest of its batch is still processed.
+
 ### Web UI
 
 With Web UI, documents with the Picture facet get a **Similar Images** tab. Web UI is only an optional dependency of the package: without it, everything else works the same.
