@@ -32,6 +32,7 @@ import static nuxeo.labs.images.dup.pageprovider.SimilarImagesPageProvider.RADIU
 import static nuxeo.labs.images.dup.pageprovider.SimilarImagesPageProvider.THRESHOLD_PARAM;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.nuxeo.ecm.platform.picture.PictureViewsGenerationWork.PICTURE_VIEWS_GENERATION_DONE_EVENT;
@@ -49,6 +50,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import javax.imageio.ImageIO;
 
 import jakarta.inject.Inject;
 
@@ -434,6 +437,12 @@ public class TestImageHashService {
         assertEquals(Map.of(first.getId(), Set.of(resized.getId()), resized.getId(), Set.of(first.getId())),
                 duplicatesBySource);
         assertEquals(2, DuplicatedImageCaptureListener.getEvents().size());
+    }
+
+    /** The cache directory of ImageIO is a JVM-wide setting, shared with every other user of ImageIO. */
+    @Test
+    public void testServiceLeavesTheImageIOCacheDirectoryAlone() {
+        assertNull(ImageIO.getCacheDirectory());
     }
 
     /**

@@ -292,6 +292,10 @@ paths.
   finding M5, half of it). `Computed.reduced` is then `null`, so never call `orientationHashes` on it.
   Storing the 8 orientation hashes, to spare the decoding for the default tab search too, is a schema
   change that was **not** done: a new string property has to go through every fulltext copy, see above.
+- **`start()` must not call `ImageIO.setCacheDirectory`** (review finding L1): it is JVM-wide state, and
+  the check that came with it failed the server start for an optional feature. ImageIO already caches in
+  `java.io.tmpdir`, which `nuxeoctl` sets to the Nuxeo temporary directory (`NuxeoLauncher.java:747`).
+  `testServiceLeavesTheImageIOCacheDirectoryAlone` guards it.
 - **Degenerate images** (smaller side < 32 px, or reduced-luminance stddev < 2.0) get a hash stored but
   an **empty** `imgh:bands`, so they are never candidates. Otherwise blank images and icons match
   everything.

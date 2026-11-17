@@ -47,7 +47,6 @@ import jakarta.annotation.Nullable;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.nuxeo.common.Environment;
 import org.nuxeo.ecm.core.api.Blob;
 import org.nuxeo.ecm.core.api.CoreSession;
 import org.nuxeo.ecm.core.api.DocumentModel;
@@ -65,7 +64,6 @@ import org.nuxeo.ecm.platform.dublincore.listener.DublinCoreListener;
 import org.nuxeo.ecm.platform.picture.api.PictureView;
 import org.nuxeo.ecm.platform.picture.api.adapters.MultiviewPicture;
 import org.nuxeo.runtime.api.Framework;
-import org.nuxeo.runtime.RuntimeServiceException;
 import org.nuxeo.runtime.model.ComponentContext;
 import org.nuxeo.runtime.model.DefaultComponent;
 
@@ -124,12 +122,6 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
      */
     @Override
     public void start(ComponentContext context) {
-        // ImageIO uses this directory for disk-backed caches when decoding picture blobs.
-        var tempDir = Environment.getDefault().getTemp();
-        if ((!tempDir.isDirectory() && !tempDir.mkdirs()) || !tempDir.isDirectory() || !tempDir.canWrite()) {
-            throw new RuntimeServiceException("Cannot use Nuxeo temporary directory for ImageIO cache: " + tempDir);
-        }
-        ImageIO.setCacheDirectory(tempDir);
         config = requireNonNullElseGet(getDescriptor(CONFIGURATION_XP, UNIQUE_DESCRIPTOR_ID),
                 ImageHashConfigurationDescriptor::new);
         signature = ALGORITHM + "/" + config.getViews().getFirst();
@@ -321,6 +313,7 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
 
     @Nullable
     protected BufferedImage readSubsampled(InputStream stream) throws IOException {
+        // disk-backed cache in java.io.tmpdir, which nuxeoctl points at the Nuxeo temporary directory
         try (var input = ImageIO.createImageInputStream(stream)) {
             var readers = input == null ? null : ImageIO.getImageReaders(input);
             if (readers == null || !readers.hasNext()) {
