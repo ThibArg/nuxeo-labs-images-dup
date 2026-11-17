@@ -130,7 +130,8 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
     public void start(ComponentContext context) {
         config = requireNonNullElseGet(getDescriptor(CONFIGURATION_XP, UNIQUE_DESCRIPTOR_ID),
                 ImageHashConfigurationDescriptor::new);
-        signature = ALGORITHM + "/" + config.getViews().getFirst();
+        // not the view: the hash comes from the first available one, and does not depend on it
+        signature = ALGORITHM;
         var crc = new CRC32();
         crc.update(signature.getBytes(UTF_8));
         bandPrefix = "%08x".formatted(crc.getValue());

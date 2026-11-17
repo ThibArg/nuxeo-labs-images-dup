@@ -54,7 +54,7 @@ public interface ImageHashService {
     String BANDS_PROPERTY = "imgh:bands";
 
     /**
-     * Property containing the hash algorithm and view signature.
+     * Property containing the signature of the hash: the version of the algorithm that computed it.
      *
      * @since 2025.1.0
      */
@@ -112,8 +112,9 @@ public interface ImageHashService {
     int DEFAULT_MAX_RESULTS = 50;
 
     /**
-     * Returns the signature of the hashes computed with the current configuration. Hashes stored with another
-     * signature are ignored by searches.
+     * Returns the signature of the hashes computed by this version of the plugin: the version of the algorithm.
+     * Hashes stored with another signature are ignored by searches. The picture view a hash is computed from is not
+     * part of it.
      *
      * @since 2025.1.0
      */

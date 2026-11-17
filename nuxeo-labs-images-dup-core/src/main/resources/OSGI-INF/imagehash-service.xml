@@ -16,8 +16,8 @@
       Every element is optional, contributions are merged. Default values:
       <code>
         <configuration>
-          <!-- First available picture view is hashed. Changing the first view changes the signature:
-               existing hashes are ignored until recomputed (bulk action "computeImageHash") -->
+          <!-- First available picture view is hashed. Changing this list does not invalidate the
+               existing hashes: a hash does not depend on the view it is computed from -->
           <views>
             <view>Small</view>
             <view>Medium</view>

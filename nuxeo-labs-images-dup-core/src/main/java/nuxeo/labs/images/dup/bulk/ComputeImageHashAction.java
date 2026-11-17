@@ -40,7 +40,7 @@ import org.nuxeo.runtime.transaction.TransactionHelper;
 import nuxeo.labs.images.dup.ImageHashService;
 
 /**
- * Computes the hashes of existing pictures (initial load, signature change...). Does not fire duplicate events.
+ * Computes the hashes of existing pictures (initial load, new version of the algorithm...). Does not fire duplicate events.
  *
  * @since 2025.1.0
  */

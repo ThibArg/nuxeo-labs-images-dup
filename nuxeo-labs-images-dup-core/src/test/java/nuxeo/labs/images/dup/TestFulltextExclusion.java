@@ -84,7 +84,7 @@ public class TestFulltextExclusion {
     }
 
     /**
-     * The signature is {@code <algorithm>/<view>}: left in fulltext, every hashed picture matches its view name.
+     * The signature is the same on every hashed picture: left in fulltext, they all match a search for it.
      *
      * @since 2025.1.0
      */

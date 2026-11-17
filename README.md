@@ -123,9 +123,9 @@ Contribute to the `configuration` extension point of `nuxeo.labs.images.dup.Imag
 
 `detectionEnabled` set to `false` switches the automatic detection off: pictures are still hashed after their views generation, but no search runs and no `duplicatedImage` event is fired. This is meant for a mass import, where the automatic detection costs one search per picture on a search cluster busy indexing, and misses the copies imported together anyway. The recipe is: import with `detectionEnabled` at `false`, wait for the indexing to catch up, then run the `detectImageDuplicates` bulk action on the imported pictures. The explicit search and that bulk action ignore this setting.
 
-The first available view is used for hashing. Changing the first view changes the hash signature; run the `computeImageHash` bulk action to update existing documents.
+The first available view of the list is used for hashing. A perceptual hash does not depend on the size of the image it is computed from, so pictures hashed from different views are compared with each other, and changing `views` does not invalidate the hashes already stored.
 
-The signature also carries the version of the algorithm, currently `phash64v2`. Hashes stored with another signature are never compared: they are ignored by every search until they are recomputed. So after upgrading from a build that stored `phash64v1` hashes, run the `computeImageHash` bulk action on all the pictures; `force` is not needed, a hash with an outdated signature is always recomputed. Until then, the pictures hashed before the upgrade are not found as duplicates.
+Each hash is stored with a signature, the version of the algorithm that computed it, currently `phash64v2`. Hashes stored with another signature are never compared: they are ignored by every search until they are recomputed. So after upgrading from a build that stored hashes with another signature, `phash64v1/Small` for example, run the `computeImageHash` bulk action on all the pictures; `force` is not needed, a hash with an outdated signature is always recomputed. Until then, the pictures hashed before the upgrade are not found as duplicates.
 
 Two settings live in `nuxeo.conf` rather than in the extension point, because the template installed by the Marketplace package needs them before the platform starts:
 
@@ -153,7 +153,7 @@ Similar images are found by querying the `imgh:bands` property through the Searc
 >
 > This is a deliberate trade-off. Those two search clients are distributed as private artifacts, and Elasticsearch 9 has no embeddable server. Testing them would make `mvn clean install` require both credentials and a Docker container, instead of working out of the box for everyone.
 
-To check a deployment manually, index a picture, then run a fulltext search on one of the values of its `imgh:bands` property, for example `f2eabf4f:0:cb94`, on its `imgh:phash` value, and on the name of the hashed view, `small` with the default configuration. The first two must return no result, and the third must not return every hashed picture: otherwise the mapping template was not applied and the hash properties are polluting the fulltext index. This is exactly what the automated tests assert on OpenSearch 1.x.
+To check a deployment manually, index a picture, then run a fulltext search on one of the values of its `imgh:bands` property, for example `f2eabf4f:0:cb94`, on its `imgh:phash` value, and on its `imgh:signature` value, `phash64v2`. None must return the picture: otherwise the mapping template was not applied and the hash properties are polluting the fulltext index. This is exactly what the automated tests assert on OpenSearch 1.x.
 
 The query always targets the search index, never the repository, so no MongoDB or PostgreSQL index is needed. Without a search engine client, hashes are still computed and stored, but duplicate detection is disabled and `ImageHash.FindSimilar` fails with an explicit error.
 
@@ -183,7 +183,7 @@ To get complete results on a large repository, lower `radius` or turn `orientati
 
 ### Keeping the Hash Properties Out of Fulltext
 
-The plugin stores three technical strings on each picture: the band keys in `imgh:bands`, opaque strings such as `f2eabf4f:0:cb94`, the hash in `imgh:phash`, and `imgh:signature`, which is made of the algorithm version and the name of the hashed view, for example `phash64v2/Small`. None of them is content. Left in fulltext, the signature alone makes a search for "small" return every hashed picture. Two different fulltext indexes can pick them up, and they are independent of each other.
+The plugin stores three technical strings on each picture: the band keys in `imgh:bands`, opaque strings such as `f2eabf4f:0:cb94`, the hash in `imgh:phash`, and `imgh:signature`, the version of the hash algorithm, for example `phash64v2`. None of them is content. Left in fulltext, every hashed picture matches a search for its signature, and early versions of this plugin, whose signature ended with the name of the hashed view, made a search for "small" return all of them. Two different fulltext indexes can pick them up, and they are independent of each other.
 
 **Search engine fulltext is handled for you.** The Marketplace package installs and activates a template that maps the three `imgh:*` properties explicitly, which overrides the default dynamic mapping and removes the `copy_to` into the fulltext field. It detects the search client in use, covers OpenSearch 1.x, OpenSearch 2.x and Elasticsearch 9.x, and also covers the green index of a blue/green reindex. Nothing to configure.
 

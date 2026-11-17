@@ -96,8 +96,9 @@ Cross-checked against the opensearch1 sources plus the private `nuxeo-opensearch
 ## Fulltext: two independent layers, both fixed here
 
 The three `imgh:*` properties are technical strings: band keys (`f2eabf4f:0:cb94`), the hash in hex, and
-the signature (`phash64v2/Small`). **All three are excluded, never only `imgh:bands`**: the analyzed
-signature made a fulltext search for "small" return every hashed picture (review finding H2). They can
+the signature (`phash64v2`). **All three are excluded, never only `imgh:bands`**: the signature then
+was `phash64v1/Small`, and once analyzed it made a fulltext search for "small" return every hashed
+picture (review finding H2). They can
 leak into **two unrelated** fulltext indexes. Fixing one does nothing for the other: `ecm:fulltextSimple` is never shipped to the search engine
 (`DefaultIndexingJsonWriter.writeSystemProperties` emits only `binarytext`).
 
@@ -284,9 +285,12 @@ paths.
 
 ## Architecture gotchas
 
-- **Signature gating.** `signature = ALGORITHM + "/" + views.getFirst()`. Changing the algorithm or the
-  *first* entry of the configured `views` invalidates every stored hash: they are silently ignored by
-  search until the `computeImageHash` bulk action is re-run. `bandPrefix` is the CRC32 of the signature
+- **Signature gating.** `signature = ALGORITHM`, nothing else. Changing the algorithm invalidates every
+  stored hash: they are silently ignored by search until the `computeImageHash` bulk action is re-run.
+  The view is **not** part of it anymore (review finding M7): the hash comes from the first *available*
+  view, so a picture without `Small` was hashed from `Medium` and still stamped `phash64v1/Small`, and
+  reordering `views` forced a full recompute for nothing. Do not put the view back; a deployment that
+  must not compare a given view simply leaves it out of `views`. `bandPrefix` is the CRC32 of the signature
   and prefixes every band key, which is what keeps signatures from matching each other at query time.
 - **The DCT block skips frequency 0** (`PHash.FIRST_FREQUENCY = 1`, coefficients 1 to 8 on each axis).
   `phash64v1` kept the DC coefficient, the plain sum of the luminance, which no other coefficient can

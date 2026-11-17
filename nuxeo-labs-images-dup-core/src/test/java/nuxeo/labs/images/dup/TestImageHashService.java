@@ -383,10 +383,8 @@ public class TestImageHashService {
         var signature = (String) doc.getPropertyValue(SIGNATURE_PROPERTY);
         assertEquals(service.getSignature(), signature);
 
-        // the signature is "<algorithm>/<view>": analyzed, it would make every hashed picture match its view name
-        var terms = new ArrayList<>(List.of(signature.split("/")));
-        terms.add(phash);
-        for (var term : terms) {
+        // the same signature on every hashed picture: in fulltext, they would all match it
+        for (var term : List.of(signature, phash)) {
             var nxql = "SELECT * FROM Document WHERE ecm:fulltext = " + NXQL.escapeString(term);
             var query = SearchQuery.builder(nxql, session.getPrincipal())
                                    .index(searchService.getDefaultIndexName(session.getRepositoryName()))
@@ -486,6 +484,25 @@ public class TestImageHashService {
         var ctx = events.getFirst().getContext();
         assertEquals(MAX_EVENT_DUPLICATES, ((Map<String, Integer>) ctx.getProperty(DUPLICATES_EVENT_PROPERTY)).size());
         assertEquals(MAX_EVENT_DUPLICATES + 2, ctx.getProperty(DUPLICATES_COUNT_EVENT_PROPERTY));
+    }
+
+    /**
+     * The signature is the version of the algorithm and nothing else. The hash comes from the first available view,
+     * not always the first configured one, and a perceptual hash does not depend on the view it is computed from.
+     */
+    @Test
+    public void testSignatureDoesNotNameAView() {
+        assertEquals(ImageHashServiceImpl.ALGORITHM, service.getSignature());
+
+        var fromSmall = createPicture("/", "fromSmall", original);
+        var fromMedium = createPicture("/", "fromMedium",
+                jpegView("Medium", "fromMedium", TestImages.resize(original, 1000, 750)));
+        viewsGenerated(fromSmall, fromMedium);
+
+        assertEquals(service.getSignature(),
+                session.getDocument(fromMedium.getRef()).getPropertyValue(SIGNATURE_PROPERTY));
+        assertEquals(Set.of(fromMedium.getId()),
+                ids(service.findSimilar(fromSmall, session.getPrincipal(), null, null, null)));
     }
 
     /** Out-of-range parameters are a client error, whatever the entry point. */

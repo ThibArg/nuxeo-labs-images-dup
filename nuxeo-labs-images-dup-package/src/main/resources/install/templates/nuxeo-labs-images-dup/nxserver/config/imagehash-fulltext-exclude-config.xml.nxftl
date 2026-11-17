@@ -4,11 +4,11 @@
 
   <!--
     The three properties of the imagehash schema are technical strings: imgh:bands holds opaque
-    search keys, imgh:phash the hash in hexadecimal and imgh:signature "<algorithm>/<view>". Nuxeo
-    indexes every string property of every schema into the repository fulltext, so without this
-    they land in ecm:fulltextSimple, where the signature makes every hashed picture match its view
-    name ("small"), and every hash store marks the document dirty for fulltext and schedules a
-    FulltextExtractorWork.
+    search keys, imgh:phash the hash in hexadecimal and imgh:signature the version of the hash
+    algorithm, the same on every picture. Nuxeo indexes every string property of every schema into
+    the repository fulltext, so without this they land in ecm:fulltextSimple, where a search for
+    the signature returns every hashed picture, and every hash store marks the document dirty for
+    fulltext and schedules a FulltextExtractorWork.
 
     The band keys need two excludeField entries, for two different consumers:
       imgh:bands    StringsExtractor tests an ArrayProperty at its own path, with no trailing /*,
