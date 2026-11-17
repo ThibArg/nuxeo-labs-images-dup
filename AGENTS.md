@@ -43,7 +43,7 @@ mvn -pl nuxeo-labs-images-dup-core test -Dtest='TestPHash#testOrientations'
 ```
 
 - `TestPHash` and `TestHashBands` are plain unit tests (< 1 s). `TestImageHashService` boots Nuxeo plus an
-  embedded OpenSearch node (~16 s), `TestFulltextExclusion` ~5 s.
+  embedded OpenSearch node (~25 s), `TestFulltextExclusion` ~5 s.
 - `ERROR ... NUXEO INSTANCE REGISTRATION FILE IS MISSING` in the test output is harmless.
 - Run `mvn clean install` before committing Java/XML changes (not needed for README / AGENTS.md /
   `.gitignore`-only commits).
@@ -244,6 +244,11 @@ paths.
   `saveDocument` fail for documents **named `unsavable`**, with a bubbling exception that does not mark
   the transaction rollback-only. It is what exercises the per-document `catch` of the two loops; the
   unreadable view alone is absorbed by `readImage`.
+- The two `testFailingSearch*` tests deploy `test-failing-search-contrib.xml` **on the method**
+  (`maxCandidates` 20000, above the `max_result_window` of the embedded index, so every candidate query is
+  rejected). The hot deploy costs about 3 s per test and is undone afterwards: `testHashPropertiesAreSecured`
+  runs after them and searches. `testFailingSearchDoesNotFailTheCaller` is the one that fails without the
+  M4 fix; `testFailingSearchKeepsTheHash` also passes with the listener's per-document `catch` alone.
 - `DuplicatedImageCaptureListener` is a **static** event collector. Call `clear()` in `@Before` or tests
   leak into each other.
 - `txFeature.nextTransaction()` is mandatory after firing events: it both drains the async post-commit
@@ -298,10 +303,21 @@ paths.
   `IOException | RuntimeException` per view: the JDK PNG reader throws `IllegalArgumentException` on some
   headers, and a blob provider can throw unchecked. The loops of `ImageHashListener` and
   `ComputeImageHashAction` catch `RuntimeException` per document, with **two rethrows to keep**:
-  `ConcurrentUpdateException` (the only failure `AbstractWork` retries, and the stream policy retries the
-  batch), and anything caught while `TransactionHelper.isTransactionMarkedRollback()` is true, because
+  `ConcurrentUpdateException` (transient, so the work or the batch must fail and be retried), and
+  anything caught while `TransactionHelper.isTransactionMarkedRollback()` is true, because
   swallowing it would end in a silent rollback of the whole batch or bundle reported as a success. The
   bulk action also reports the document through `delta.inError(...)`, so it shows in `errorCount`.
+  Retries, for the record: `AbstractWork.run()` retries on **any** `RuntimeException`
+  (`AbstractWork.java:340-363`), and a listener work defaults to `retryCount` 2
+  (`AsyncEventExecutor.java:140`), so a failing bundle used to run three times in a row, without delay,
+  before being dropped. The review report says it retries on `ConcurrentUpdateException` only; that line
+  is the logging in `cleanUp`.
+- **A failing duplicate search must not fail `updateHashAndDetectDuplicates`** (review finding M4,
+  reproduced before the fix): the search runs in the transaction that has just saved the hash, so an
+  exception escaping it rolled the hash back. It is caught and logged in the service, not only in the
+  listener loop, because the per-document `catch` of the listener would otherwise report "Cannot hash
+  document" for a hash that is stored, and other callers of the service have no such `catch`.
+  `fireDuplicatedImage` is deliberately left outside the `try`.
 - `ImageHashListener` writes with `CoreInstance.getCoreSessionSystem(...)` so the hash is stored even
   when the triggering user cannot write the document, but the duplicate **search** uses the triggering
   principal, so the fired event only lists duplicates that user can read.

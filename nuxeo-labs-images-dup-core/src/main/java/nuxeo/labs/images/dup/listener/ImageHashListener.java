@@ -72,7 +72,7 @@ public class ImageHashListener implements PostCommitEventListener {
             } catch (DocumentNotFoundException e) {
                 log.debug("Document: {} was removed before being hashed", source::getId);
             } catch (ConcurrentUpdateException e) {
-                // the only failure the work manager retries
+                // transient: fail the work, so that it is retried with the whole bundle
                 throw e;
             } catch (RuntimeException e) {
                 if (TransactionHelper.isTransactionMarkedRollback()) {

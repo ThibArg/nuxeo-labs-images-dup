@@ -448,6 +448,35 @@ public class TestImageHashService {
         assertTrue(status.getErrorMessage(), status.getErrorMessage().contains(unsavable.getId()));
     }
 
+    /** The duplicate search runs after the hash is saved, in the same transaction: its failure must not undo it. */
+    @Test
+    @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-failing-search-contrib.xml")
+    public void testFailingSearchKeepsTheHash() {
+        var doc = createPicture("/", "original", original);
+        // the search does fail with this configuration
+        assertThrows(RuntimeException.class, () -> service.findSimilar(doc, session.getPrincipal(), null, null, null));
+
+        viewsGenerated(doc);
+
+        var hashed = session.getDocument(doc.getRef());
+        assertTrue("the hash must be stored although the detection failed", hashed.hasFacet(IMAGE_HASH_FACET));
+        assertEquals(service.getSignature(), hashed.getPropertyValue(SIGNATURE_PROPERTY));
+        assertTrue(DuplicatedImageCaptureListener.getEvents().isEmpty());
+    }
+
+    /** Same, for a direct caller of the service: the detection failure is not its failure. */
+    @Test
+    @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-failing-search-contrib.xml")
+    public void testFailingSearchDoesNotFailTheCaller() {
+        var doc = createPicture("/", "original", original);
+        assertThrows(RuntimeException.class, () -> service.findSimilar(doc, session.getPrincipal(), null, null, null));
+
+        service.updateHashAndDetectDuplicates(session, doc, session.getPrincipal());
+        txFeature.nextTransaction();
+
+        assertTrue(session.getDocument(doc.getRef()).hasFacet(IMAGE_HASH_FACET));
+    }
+
     /**
      * A user who can write a picture must not be able to hide it from detection, or to forge its hash.
      * <p>

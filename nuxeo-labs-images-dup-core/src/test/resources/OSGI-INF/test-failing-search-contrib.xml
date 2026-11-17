@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.test.failing.search">
+
+  <require>nuxeo.labs.images.dup.ImageHashService</require>
+
+  <!-- Above the max_result_window of the index (10000): the search engine rejects every candidate query -->
+  <extension target="nuxeo.labs.images.dup.ImageHashService" point="configuration">
+    <configuration>
+      <maxCandidates>20000</maxCandidates>
+    </configuration>
+  </extension>
+
+</component>

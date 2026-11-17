@@ -160,7 +160,7 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
         if (computed == null || !store(session, doc, computed) || computed.degenerate()) {
             return;
         }
-        // the hash is stored even without a search engine, only the detection is skipped
+        // the hash is stored even without a working search engine, only the detection is skipped
         var index = findSearchIndex(doc.getRepositoryName());
         if (index == null) {
             if (!missingSearchEngineLogged) {
@@ -170,8 +170,15 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
             }
             return;
         }
-        var duplicates = search(doc, principal, computed, index, config.isDetectionOrientations(),
-                config.getDetectionRadius(), config.getThreshold());
+        List<SimilarImage> duplicates;
+        try {
+            duplicates = search(doc, principal, computed, index, config.isDetectionOrientations(),
+                    config.getDetectionRadius(), config.getThreshold());
+        } catch (RuntimeException e) {
+            // the search runs in the transaction that has just saved the hash: failing here would roll it back
+            log.error("The hash of document: {} is stored, but its duplicate detection failed", doc.getId(), e);
+            return;
+        }
         if (!duplicates.isEmpty()) {
             fireDuplicatedImage(session, doc, principal, duplicates);
         }

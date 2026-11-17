@@ -129,7 +129,9 @@ The query always targets the search index, never the repository, so no MongoDB o
 
 The index actually queried is the one declared as default for the repository, so a blue/green reindex keeps working: the plugin follows the blue index until you swap.
 
-`maxCandidates` must stay below the index `max_result_window`, which defaults to 10000. The plugin default is exactly 10000, so lower it if you lower the window.
+`maxCandidates` must not exceed the index `max_result_window`, which defaults to 10000. The plugin default is exactly 10000, so lower it if you lower the window: above the window, the search engine rejects every candidate query.
+
+When the duplicate search fails during the automatic detection, because of such a rejection or because the search cluster is unavailable, the hash is still stored and the failure is logged as an error, but the `duplicatedImage` event is not fired for that picture and the detection is not replayed later.
 
 ### Keeping the Hash Properties Out of Fulltext
 
