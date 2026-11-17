@@ -112,7 +112,11 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
     /** Logged only once, the listener would otherwise report it for every picture. */
     protected volatile boolean missingSearchEngineLogged;
 
-    protected record Computed(long hash, double[][] reduced, boolean degenerate) {
+    /**
+     * @param reduced the reduced luminance matrix, {@code null} when the hash was read from the document, in which
+     *            case the hashes of the orientations cannot be computed
+     */
+    protected record Computed(long hash, @Nullable double[][] reduced, boolean degenerate) {
     }
 
     /**
@@ -196,15 +200,7 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
         if (!signature.equals(getStoredSignature(doc))) {
             return false;
         }
-        Computed computed;
-        if (config.isDetectionOrientations()) {
-            // the hashes of the orientations are not stored, they need the image
-            computed = compute(doc);
-        } else {
-            // the stored hash is the one the index knows, and reading it spares fetching and decoding a blob
-            var hasBands = doc.getPropertyValue(BANDS_PROPERTY) instanceof Object[] bands && bands.length > 0;
-            computed = new Computed(PHash.fromHex((String) doc.getPropertyValue(PHASH_PROPERTY)), null, !hasBands);
-        }
+        var computed = storedOrComputed(doc, config.isDetectionOrientations());
         if (computed == null || computed.degenerate()) {
             return false;
         }
@@ -223,12 +219,12 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
     @Override
     public SimilarImages findSimilar(DocumentModel doc, NuxeoPrincipal principal, @Nullable Integer threshold,
             @Nullable Integer radius, @Nullable Boolean orientations) {
-        var computed = compute(doc);
+        boolean withOrientations = requireNonNullElse(orientations, config.isSearchOrientations());
+        var computed = storedOrComputed(doc, withOrientations);
         if (computed == null || computed.degenerate()) {
             return SimilarImages.NONE;
         }
-        return search(doc, principal, computed, requireSearchIndex(doc.getRepositoryName()),
-                requireNonNullElse(orientations, config.isSearchOrientations()),
+        return search(doc, principal, computed, requireSearchIndex(doc.getRepositoryName()), withOrientations,
                 requireNonNullElse(radius, config.getSearchRadius()),
                 requireNonNullElse(threshold, config.getThreshold()));
     }
@@ -268,6 +264,21 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
     @Nullable
     protected String getStoredSignature(DocumentModel doc) {
         return doc.hasFacet(IMAGE_HASH_FACET) ? (String) doc.getPropertyValue(SIGNATURE_PROPERTY) : null;
+    }
+
+    /**
+     * Returns the hash to search from: the stored one when it has the current signature and the search does not need
+     * the orientations, whose hashes are not stored and need the image. It spares fetching and decoding a blob, and
+     * it is the hash the index knows.
+     */
+    @Nullable
+    protected Computed storedOrComputed(DocumentModel doc, boolean orientations) {
+        if (!orientations && signature.equals(getStoredSignature(doc))
+                && doc.getPropertyValue(PHASH_PROPERTY) instanceof String hex) {
+            var hasBands = doc.getPropertyValue(BANDS_PROPERTY) instanceof Object[] bands && bands.length > 0;
+            return new Computed(PHash.fromHex(hex), null, !hasBands);
+        }
+        return compute(doc);
     }
 
     @Nullable

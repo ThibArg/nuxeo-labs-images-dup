@@ -436,6 +436,27 @@ public class TestImageHashService {
         assertEquals(2, DuplicatedImageCaptureListener.getEvents().size());
     }
 
+    /**
+     * A search that does not need the orientations starts from the stored hash: it must not fetch and decode the view
+     * again. The view is made unreadable after the hashing to tell the two apart.
+     */
+    @Test
+    public void testFindSimilarUsesTheStoredHash() {
+        var first = createPicture("/", "first", original);
+        var resized = createPicture("/", "resized", TestImages.resize(original, 280, 210));
+        viewsGenerated(first, resized);
+
+        first = session.getDocument(first.getRef());
+        first.setPropertyValue("picture:views", new ArrayList<>(List.of(unreadableView("Small"))));
+        first = session.saveDocument(first);
+        txFeature.nextTransaction();
+
+        assertEquals(Set.of(resized.getId()),
+                ids(service.findSimilar(first, session.getPrincipal(), null, null, Boolean.FALSE)));
+        // the hashes of the orientations are not stored: they still need the image
+        assertEquals(SimilarImages.NONE, service.findSimilar(first, session.getPrincipal(), null, null, Boolean.TRUE));
+    }
+
     /** With the automatic detection switched off, pictures are still hashed, and the bulk action still detects. */
     @Test
     @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-detection-disabled-contrib.xml")

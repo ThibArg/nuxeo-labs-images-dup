@@ -287,6 +287,11 @@ paths.
   Candidates come from `imgh:bands IN (...)`; `queryKeys` expands to all 1- or 2-bit variants per band.
   Radius `r` guarantees finding everything within Hamming distance `4r + 3`. Key count explodes:
   radius 0 -> 4 keys, 1 -> 68, 2 -> 548.
+- **`storedOrComputed`**: `findSimilar` and `detectDuplicates` start from the stored hash when its
+  signature is current and the search has no orientations, and decode the image otherwise (review
+  finding M5, half of it). `Computed.reduced` is then `null`, so never call `orientationHashes` on it.
+  Storing the 8 orientation hashes, to spare the decoding for the default tab search too, is a schema
+  change that was **not** done: a new string property has to go through every fulltext copy, see above.
 - **Degenerate images** (smaller side < 32 px, or reduced-luminance stddev < 2.0) get a hash stored but
   an **empty** `imgh:bands`, so they are never candidates. Otherwise blank images and icons match
   everything.
