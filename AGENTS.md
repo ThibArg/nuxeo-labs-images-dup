@@ -402,6 +402,12 @@ and `imagehash-webui-contrib.xml`. Web UI is only an `<optional-dependencies>` o
 - `PageProviderServiceImpl` calls `setCurrentPage()`, which fetches, then `setCurrentPageOffset()`, which
   takes precedence. The provider overrides `setCurrentPageOffset` to drop the cached page when the
   offset changes. Keep it.
+- **`SimilarImagesPageProvider.loadDocuments` is the one place turning search results into documents**
+  (review finding L3), used by the provider and by the operation. One `getDocument` per result, catching
+  `DocumentNotFoundException` and `DocumentSecurityException`: the engine ACL filter is Browse-level, so
+  a search does list documents the user can browse but not read, and the operation used to fail on them
+  (`testResultsTheUserCannotReadAreSkipped`). The operation refills up to `maxResults`; the provider
+  cannot, its offsets are positions in the unfiltered list, so `resultsCount` is an upper bound.
 - **Distance**: the provider puts it in each document's context data and `SimilarImageJsonEnricher`
   (`imageSimilarity`) writes it. This works only because the REST writer serializes the very instances
   returned by `getCurrentPage()`.

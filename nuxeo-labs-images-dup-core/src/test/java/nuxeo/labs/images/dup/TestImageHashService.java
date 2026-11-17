@@ -439,6 +439,37 @@ public class TestImageHashService {
         assertEquals(2, DuplicatedImageCaptureListener.getEvents().size());
     }
 
+    /**
+     * The search lists the documents the user can browse, which is less than reading them. Such a result must be
+     * skipped, by the operation as by the page provider, and must not count in {@code maxResults}.
+     */
+    @Test
+    public void testResultsTheUserCannotReadAreSkipped() throws OperationException {
+        var sharedFolder = createFolder("shared", true);
+        var browsableFolder = session.createDocument(session.createDocumentModel("/", "browsable", "Folder"));
+        var acp = browsableFolder.getACP();
+        acp.getOrCreateACL().add(new ACE(JOHN.getName(), SecurityConstants.BROWSE, true));
+        session.setACP(browsableFolder.getRef(), acp, true);
+        var reference = createPicture(sharedFolder.getPathAsString(), "reference", original);
+        var browsable = createPicture(browsableFolder.getPathAsString(), "browsable", original);
+        var readable = createPicture(sharedFolder.getPathAsString(), "readable",
+                TestImages.resize(original, 280, 210));
+        viewsGenerated(reference, browsable, readable);
+
+        var johnSession = CoreInstance.getCoreSession(session.getRepositoryName(), JOHN);
+        assertTrue(johnSession.exists(browsable.getRef()));
+        assertFalse(johnSession.hasPermission(browsable.getRef(), SecurityConstants.READ));
+
+        var ctx = new OperationContext(johnSession);
+        ctx.setInput(johnSession.getDocument(reference.getRef()));
+        var docs = (DocumentModelList) automationService.run(ctx, FindSimilarImagesOp.ID, Map.of("maxResults", 1));
+        assertEquals(Set.of(readable.getId()), docIds(docs));
+        assertTrue(docs.getFirst().getContextData(DISTANCE_CONTEXT_DATA) instanceof Integer);
+
+        var provider = similarImages(johnSession, Map.of(DOC_ID_PARAM, reference.getId()), 40, 0);
+        assertEquals(Set.of(readable.getId()), docIds(provider.getCurrentPage()));
+    }
+
     /** Out-of-range parameters are a client error, whatever the entry point. */
     @Test
     public void testFindSimilarValidatesItsParameters() {

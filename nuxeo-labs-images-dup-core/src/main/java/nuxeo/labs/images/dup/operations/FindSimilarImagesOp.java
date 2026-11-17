@@ -27,11 +27,11 @@ import org.nuxeo.ecm.automation.core.annotations.Param;
 import org.nuxeo.ecm.core.api.CoreSession;
 import org.nuxeo.ecm.core.api.DocumentModel;
 import org.nuxeo.ecm.core.api.DocumentModelList;
-import org.nuxeo.ecm.core.api.IdRef;
 import org.nuxeo.ecm.core.api.NuxeoException;
 import org.nuxeo.ecm.core.api.impl.DocumentModelListImpl;
 
 import nuxeo.labs.images.dup.ImageHashService;
+import nuxeo.labs.images.dup.pageprovider.SimilarImagesPageProvider;
 
 /**
  * Automation operation that returns documents with images similar to the input image.
@@ -43,7 +43,8 @@ import nuxeo.labs.images.dup.ImageHashService;
         + " document's image, closest first. Unset parameters use the configured values. threshold: max Hamming"
         + " distance (0-64). radius: 0-2, higher finds more duplicates but is slower. orientations: also find"
         + " rotated and mirrored images. maxResults: defaults to 50. Sets the context variable imageHashTruncated to"
-        + " true when the search reached the maximum number of candidates: the result may then be incomplete.")
+        + " true when the search reached the maximum number of candidates: the result may then be incomplete. The"
+        + " imageSimilarity enricher gives the distance of each returned document.")
 public class FindSimilarImagesOp {
 
     /** @since 2025.1.0 */
@@ -88,15 +89,9 @@ public class FindSimilarImagesOp {
         if (maxResults < 1) {
             throw new NuxeoException("Parameter: maxResults must be at least 1, got: " + maxResults, SC_BAD_REQUEST);
         }
-        var result = new DocumentModelListImpl();
         var similar = service.findSimilar(doc, session.getPrincipal(), threshold, radius, orientations);
         ctx.put(TRUNCATED_CONTEXT_VARIABLE, similar.truncated());
-        similar.images()
-               .stream()
-               .limit(maxResults)
-               .map(image -> new IdRef(image.docId()))
-               .filter(session::exists)
-               .forEach(ref -> result.add(session.getDocument(ref)));
-        return result;
+        return new DocumentModelListImpl(SimilarImagesPageProvider.loadDocuments(session, similar.images(),
+                maxResults, similar.truncated()));
     }
 }

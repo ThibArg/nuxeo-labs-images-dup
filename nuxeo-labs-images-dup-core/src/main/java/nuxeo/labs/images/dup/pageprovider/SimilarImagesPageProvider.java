@@ -29,16 +29,20 @@ import java.util.Map;
 
 import jakarta.annotation.Nullable;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.nuxeo.ecm.core.api.CoreSession;
 import org.nuxeo.ecm.core.api.DocumentModel;
+import org.nuxeo.ecm.core.api.DocumentNotFoundException;
+import org.nuxeo.ecm.core.api.DocumentSecurityException;
 import org.nuxeo.ecm.core.api.IdRef;
 import org.nuxeo.ecm.core.api.NuxeoException;
-import org.nuxeo.ecm.core.api.security.SecurityConstants;
 import org.nuxeo.ecm.platform.query.api.AbstractPageProvider;
 import org.nuxeo.runtime.api.Framework;
 
 import nuxeo.labs.images.dup.HashBands;
 import nuxeo.labs.images.dup.ImageHashService;
+import nuxeo.labs.images.dup.SimilarImage;
 
 /**
  * Lists the documents readable by the current user whose image is a near duplicate of a reference document's image,
@@ -54,6 +58,8 @@ import nuxeo.labs.images.dup.ImageHashService;
 public class SimilarImagesPageProvider extends AbstractPageProvider<DocumentModel> {
 
     private static final long serialVersionUID = 1L;
+
+    private static final Logger log = LogManager.getLogger(SimilarImagesPageProvider.class);
 
     /** @since 2025.1.0 */
     public static final String NAME = "imagehash_similar_images";
@@ -167,6 +173,7 @@ public class SimilarImagesPageProvider extends AbstractPageProvider<DocumentMode
                               .findSimilar(doc, session.getPrincipal(), threshold, radius, orientations);
         truncated = result.truncated();
         var similar = result.images().subList(0, Math.min(result.images().size(), limit));
+        // an upper bound: the documents skipped when a page is loaded are not known here
         setResultsCount(similar.size());
 
         var offset = getCurrentPageOffset();
@@ -175,15 +182,33 @@ public class SimilarImagesPageProvider extends AbstractPageProvider<DocumentMode
         }
         var pageSize = getMinMaxPageSize();
         var end = pageSize > 0 ? Math.min(similar.size(), offset + pageSize) : similar.size();
+        return loadDocuments(session, similar.subList((int) offset, (int) end), Integer.MAX_VALUE, truncated);
+    }
+
+    /**
+     * Loads the documents of similar images, in order and at most {@code max} of them, skipping those which do not
+     * exist anymore or which the user cannot read: the search index can lag behind deletions and permission changes,
+     * and it lists the documents the user can browse, which is less than reading them.
+     * <p>
+     * Each document gets its distance and the truncation flag in its context data, see
+     * {@link #DISTANCE_CONTEXT_DATA} and {@link #TRUNCATED_CONTEXT_DATA}.
+     *
+     * @since 2025.1.0
+     */
+    public static List<DocumentModel> loadDocuments(CoreSession session, List<SimilarImage> images, int max,
+            boolean truncated) {
         var docs = new ArrayList<DocumentModel>();
-        for (var image : similar.subList((int) offset, (int) end)) {
-            var ref = new IdRef(image.docId());
-            // the search index can lag behind deletions and permission changes
-            if (session.exists(ref) && session.hasPermission(ref, SecurityConstants.READ)) {
-                var similarDoc = session.getDocument(ref);
-                similarDoc.putContextData(DISTANCE_CONTEXT_DATA, image.distance());
-                similarDoc.putContextData(TRUNCATED_CONTEXT_DATA, truncated);
-                docs.add(similarDoc);
+        for (var image : images) {
+            if (docs.size() >= max) {
+                break;
+            }
+            try {
+                var doc = session.getDocument(new IdRef(image.docId()));
+                doc.putContextData(DISTANCE_CONTEXT_DATA, image.distance());
+                doc.putContextData(TRUNCATED_CONTEXT_DATA, truncated);
+                docs.add(doc);
+            } catch (DocumentNotFoundException | DocumentSecurityException e) {
+                log.debug("Skipping similar document: {}, {}", image::docId, e::getMessage);
             }
         }
         return docs;

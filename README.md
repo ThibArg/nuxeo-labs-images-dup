@@ -22,7 +22,7 @@ To search for similar images, call the `ImageHash.FindSimilar` Automation operat
 | `threshold` | Maximum Hamming distance, from 0 to 64. | `<threshold>`, default `8` |
 | `radius` | Search radius, from 0 to 2. Higher values find more candidates but cost more. | `<searchRadius>`, default `1` |
 | `orientations` | Also compare rotated and mirrored images. | `<searchOrientations>`, default `true` |
-| `maxResults` | Maximum returned documents. | `50`, not configurable |
+| `maxResults` | Maximum returned documents, at least 1. | `50`, not configurable |
 
 The first three fall back to the [configuration](#configuration), so the usual way to change them for every caller is to contribute, not to pass them on each call.
 
@@ -87,9 +87,9 @@ GET /nuxeo/api/v1/search/pp/imagehash_similar_images/execute?docId=<document id>
 | `threshold`, `radius`, `orientations` | Same as the operation. When missing or empty, the configured values are used. |
 | `limit` | Maximum returned documents, default `50`. Same role as the operation's `maxResults`, which is a name the REST search endpoint reserves. |
 
-The usual paging parameters (`pageSize`, `currentPageIndex`, `offset`) apply, and invalid values return a `400`. Each page request runs the whole search again, so a `pageSize` covering `limit` avoids repeating it.
+The usual paging parameters (`pageSize`, `currentPageIndex`, `offset`) apply, and invalid values return a `400`. `resultsCount` is an upper bound: a document deleted or made unreadable since it was indexed is skipped when its page is loaded. Each page request runs the whole search again, so a `pageSize` covering `limit` avoids repeating it.
 
-Add the `imageSimilarity` enricher, for example with the `enrichers-document: imageSimilarity` header, to get the distance of each document in `contextParameters.imageSimilarity.distance`. The same object holds `truncated`, identical for every document of a response: `true` when the search reached the [candidate limit](#candidate-limit) and the result may be incomplete.
+Add the `imageSimilarity` enricher, for example with the `enrichers-document: imageSimilarity` header, on the page provider or on the operation, to get the distance of each document in `contextParameters.imageSimilarity.distance`. The same object holds `truncated`, identical for every document of a response: `true` when the search reached the [candidate limit](#candidate-limit) and the result may be incomplete.
 
 ## Configuration
 
