@@ -296,6 +296,11 @@ paths.
   the check that came with it failed the server start for an optional feature. ImageIO already caches in
   `java.io.tmpdir`, which `nuxeoctl` sets to the Nuxeo temporary directory (`NuxeoLauncher.java:747`).
   `testServiceLeavesTheImageIOCacheDirectoryAlone` guards it.
+- **Range validation lives in `findSimilar`** (`checkRange`, `NuxeoException` with a 400 status, review
+  finding L2), so that the operation, the page provider and Java callers share it. The page provider
+  keeps its own `parseInt`, needed for values that are not integers; `maxResults` / `limit` are checked
+  by each entry point, the service does not know them. The configuration still clamps silently.
+  `AutomationService.run` lets the `NuxeoException` through unwrapped.
 - **Degenerate images** (smaller side < 32 px, or reduced-luminance stddev < 2.0) get a hash stored but
   an **empty** `imgh:bands`, so they are never candidates. Otherwise blank images and icons match
   everything.

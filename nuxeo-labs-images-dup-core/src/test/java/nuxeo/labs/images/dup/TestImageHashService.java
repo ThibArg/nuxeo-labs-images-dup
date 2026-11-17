@@ -439,6 +439,32 @@ public class TestImageHashService {
         assertEquals(2, DuplicatedImageCaptureListener.getEvents().size());
     }
 
+    /** Out-of-range parameters are a client error, whatever the entry point. */
+    @Test
+    public void testFindSimilarValidatesItsParameters() {
+        var first = createPicture("/", "first", original);
+        viewsGenerated(first);
+
+        var principal = session.getPrincipal();
+        assertEquals(400, assertThrows(NuxeoException.class,
+                () -> service.findSimilar(first, principal, 65, null, null)).getStatusCode());
+        assertEquals(400, assertThrows(NuxeoException.class,
+                () -> service.findSimilar(first, principal, -1, null, null)).getStatusCode());
+        assertEquals(400, assertThrows(NuxeoException.class,
+                () -> service.findSimilar(first, principal, null, 3, null)).getStatusCode());
+
+        assertOperationBadRequest(first, Map.of("radius", 5));
+        assertOperationBadRequest(first, Map.of("threshold", 500));
+        assertOperationBadRequest(first, Map.of("maxResults", -1));
+    }
+
+    protected void assertOperationBadRequest(DocumentModel doc, Map<String, Object> params) {
+        var ctx = new OperationContext(session);
+        ctx.setInput(doc);
+        var e = assertThrows(NuxeoException.class, () -> automationService.run(ctx, FindSimilarImagesOp.ID, params));
+        assertEquals(params.toString(), 400, e.getStatusCode());
+    }
+
     /** The cache directory of ImageIO is a JVM-wide setting, shared with every other user of ImageIO. */
     @Test
     public void testServiceLeavesTheImageIOCacheDirectoryAlone() {

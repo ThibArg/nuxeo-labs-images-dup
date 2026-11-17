@@ -148,11 +148,12 @@ public interface ImageHashService {
      * The search examines at most the configured number of candidates. Beyond it the result is
      * {@link SimilarImages#truncated() truncated}: callers must not present it as complete.
      *
-     * @param threshold max Hamming distance, out of 64 bits
+     * @param threshold max Hamming distance, from 0 to 64
      * @param radius 0 to 2, see {@link HashBands}
      * @param orientations also find rotated and mirrored images
      * @throws org.nuxeo.ecm.core.api.NuxeoException if no search engine serves the repository, see
-     *             {@link #updateHashAndDetectDuplicates}
+     *             {@link #updateHashAndDetectDuplicates}, or, with a 400 status, if {@code threshold} or
+     *             {@code radius} is out of range
      * @since 2025.1.0
      */
     SimilarImages findSimilar(DocumentModel doc, NuxeoPrincipal principal, @Nullable Integer threshold,

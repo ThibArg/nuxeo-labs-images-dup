@@ -100,6 +100,8 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
             + " search engine: install nuxeo-search-client-opensearch1, nuxeo-search-client-opensearch2 or"
             + " nuxeo-search-client-elasticsearch9";
 
+    protected static final int SC_BAD_REQUEST = 400;
+
     protected ImageHashConfigurationDescriptor config;
 
     protected String signature;
@@ -211,6 +213,8 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
     @Override
     public SimilarImages findSimilar(DocumentModel doc, NuxeoPrincipal principal, @Nullable Integer threshold,
             @Nullable Integer radius, @Nullable Boolean orientations) {
+        checkRange("threshold", threshold, Long.SIZE);
+        checkRange("radius", radius, HashBands.MAX_RADIUS);
         boolean withOrientations = requireNonNullElse(orientations, config.isSearchOrientations());
         var computed = storedOrComputed(doc, withOrientations);
         if (computed == null || computed.degenerate()) {
@@ -219,6 +223,16 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
         return search(doc, principal, computed, requireSearchIndex(doc.getRepositoryName()), withOrientations,
                 requireNonNullElse(radius, config.getSearchRadius()),
                 requireNonNullElse(threshold, config.getThreshold()));
+    }
+
+    /**
+     * @throws NuxeoException with a 400 status if the value is set and not between 0 and {@code max}
+     */
+    protected static void checkRange(String name, @Nullable Integer value, int max) {
+        if (value != null && (value < 0 || value > max)) {
+            throw new NuxeoException("Parameter: %s must be between 0 and %d, got: %d".formatted(name, max, value),
+                    SC_BAD_REQUEST);
+        }
     }
 
     /**

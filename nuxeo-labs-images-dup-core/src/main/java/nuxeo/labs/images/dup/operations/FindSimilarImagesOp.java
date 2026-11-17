@@ -28,6 +28,7 @@ import org.nuxeo.ecm.core.api.CoreSession;
 import org.nuxeo.ecm.core.api.DocumentModel;
 import org.nuxeo.ecm.core.api.DocumentModelList;
 import org.nuxeo.ecm.core.api.IdRef;
+import org.nuxeo.ecm.core.api.NuxeoException;
 import org.nuxeo.ecm.core.api.impl.DocumentModelListImpl;
 
 import nuxeo.labs.images.dup.ImageHashService;
@@ -56,6 +57,8 @@ public class FindSimilarImagesOp {
      */
     public static final String TRUNCATED_CONTEXT_VARIABLE = "imageHashTruncated";
 
+    protected static final int SC_BAD_REQUEST = 400;
+
     @Context
     protected OperationContext ctx;
 
@@ -82,6 +85,9 @@ public class FindSimilarImagesOp {
      */
     @OperationMethod
     public DocumentModelList run(DocumentModel doc) {
+        if (maxResults < 1) {
+            throw new NuxeoException("Parameter: maxResults must be at least 1, got: " + maxResults, SC_BAD_REQUEST);
+        }
         var result = new DocumentModelListImpl();
         var similar = service.findSimilar(doc, session.getPrincipal(), threshold, radius, orientations);
         ctx.put(TRUNCATED_CONTEXT_VARIABLE, similar.truncated());

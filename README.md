@@ -26,6 +26,8 @@ To search for similar images, call the `ImageHash.FindSimilar` Automation operat
 
 The first three fall back to the [configuration](#configuration), so the usual way to change them for every caller is to contribute, not to pass them on each call.
 
+Out-of-range values are rejected as a bad request (`400`), the same way by the operation, the page provider and the Java service.
+
 The operation sets the `imageHashTruncated` context variable: `true` when the returned list may be incomplete, see [Candidate Limit](#candidate-limit).
 
 **Hamming distance** is the number of differing bits between two 64-bit hashes: `0` means identical hashes, and the lower the value, the more similar the images. `threshold` is the distance at or below which two images are considered duplicates.
