@@ -61,6 +61,8 @@ Like `computeImageHash`, it can only be launched by administrators.
 
 The hash is stored in three properties of the `ImageHash` facet, `imgh:phash`, `imgh:bands` and `imgh:signature`. They are declared `secured`: only administrators and the system can write them, so a user who can edit a picture cannot blank or forge its hash to hide it from detection. Custom code calling `ImageHashService.updateHash` must therefore run under an administrator or system login.
 
+Storing the hash is a second save of the picture, after the one of its views. It creates no version, does not change the modification date or the last contributor, writes no audit entry and sends no notification. Two things cannot be avoided, though: the picture is indexed a second time in the search engine, and the save fires `beforeDocumentModification` and `documentModified` like any other, so event handlers on document modification, Studio ones included, run once more per picture, as the system user.
+
 A picture that cannot be hashed does not stop the others. A view that cannot be decoded is logged and the next configured view is tried; a picture with no readable view is left without a hash. In the bulk action, a picture whose hash cannot be saved is logged and counted in the `errorCount` of the command status, and the rest of its batch is still processed.
 
 ### Web UI
