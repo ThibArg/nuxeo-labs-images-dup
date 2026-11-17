@@ -94,7 +94,7 @@ Cross-checked against the opensearch1 sources plus the private `nuxeo-opensearch
 ## Fulltext: two independent layers, both fixed here
 
 The three `imgh:*` properties are technical strings: band keys (`f2eabf4f:0:cb94`), the hash in hex, and
-the signature (`phash64v1/Small`). **All three are excluded, never only `imgh:bands`**: the analyzed
+the signature (`phash64v2/Small`). **All three are excluded, never only `imgh:bands`**: the analyzed
 signature made a fulltext search for "small" return every hashed picture (review finding H2). They can
 leak into **two unrelated** fulltext indexes. Fixing one does nothing for the other: `ecm:fulltextSimple` is never shipped to the search engine
 (`DefaultIndexingJsonWriter.writeSystemProperties` emits only `binarytext`).
@@ -255,6 +255,12 @@ paths.
   *first* entry of the configured `views` invalidates every stored hash: they are silently ignored by
   search until the `computeImageHash` bulk action is re-run. `bandPrefix` is the CRC32 of the signature
   and prefixes every band key, which is what keeps signatures from matching each other at query time.
+- **The DCT block skips frequency 0** (`PHash.FIRST_FREQUENCY = 1`, coefficients 1 to 8 on each axis).
+  `phash64v1` kept the DC coefficient, the plain sum of the luminance, which no other coefficient can
+  exceed: bit 63 was always 1, band 0 selected half as well as the others and every search fetched 25%
+  more candidates (review finding M1). `ALGORITHM` is now `phash64v2`, so `phash64v1` hashes are ignored
+  until `computeImageHash` is re-run (no `force` needed). `TestPHash#testBitDistribution` is the
+  regression test and **did fail** on bit 63. Any change to `PHash.hash()` needs an `ALGORITHM` bump.
 - **Band search, not brute force.** The 64-bit hash is split into 4 x 16-bit bands (`HashBands`).
   Candidates come from `imgh:bands IN (...)`; `queryKeys` expands to all 1- or 2-bit variants per band.
   Radius `r` guarantees finding everything within Hamming distance `4r + 3`. Key count explodes:

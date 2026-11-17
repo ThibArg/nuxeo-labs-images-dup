@@ -83,7 +83,7 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
     public static final String CONFIGURATION_XP = "configuration";
 
     /** To change whenever the hash computation changes, so that existing hashes are not compared anymore. */
-    protected static final String ALGORITHM = "phash64v1";
+    protected static final String ALGORITHM = "phash64v2";
 
     /** Images are subsampled when read, down to about this size on their smaller side. */
     protected static final int READ_SIZE = 256;

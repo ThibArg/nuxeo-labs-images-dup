@@ -25,6 +25,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.awt.Color;
 import java.awt.image.BufferedImage;
+import java.util.Random;
 
 import org.junit.Test;
 
@@ -73,6 +74,44 @@ public class TestPHash {
 
         // a rotated copy is not found without orientations
         assertTrue(PHash.distance(hash(original), hash(rotated90)) > THRESHOLD);
+    }
+
+    /**
+     * Every bit must carry information. The DC coefficient, the sum of the luminance, is never below the others, so a
+     * hash keeping it has a bit that is always set, and the band holding that bit selects half as well as the others.
+     */
+    @Test
+    public void testBitDistribution() {
+        var random = new Random(42);
+        var count = 3000;
+        var ones = new int[Long.SIZE];
+        for (var i = 0; i < count; i++) {
+            var hash = PHash.hash(randomMatrix(random, i % 3));
+            for (var bit = 0; bit < Long.SIZE; bit++) {
+                ones[bit] += (int) (hash >>> bit & 1);
+            }
+        }
+        for (var bit = 0; bit < Long.SIZE; bit++) {
+            var share = (double) ones[bit] / count;
+            assertTrue("bit " + bit + " is set in " + share + " of the hashes", share > 0.25 && share < 0.75);
+        }
+    }
+
+    /** Noise, a gradient or a dark image with bright spots: luminance matrices with different spectra. */
+    protected static double[][] randomMatrix(Random random, int kind) {
+        var matrix = new double[PHash.REDUCED_SIZE][PHash.REDUCED_SIZE];
+        var dx = random.nextDouble() * 2 - 1;
+        var dy = random.nextDouble() * 2 - 1;
+        for (var y = 0; y < PHash.REDUCED_SIZE; y++) {
+            for (var x = 0; x < PHash.REDUCED_SIZE; x++) {
+                matrix[y][x] = switch (kind) {
+                    case 0 -> random.nextInt(256);
+                    case 1 -> Math.clamp(128 + 3 * (dx * x + dy * y) + 40 * random.nextGaussian(), 0, 255);
+                    default -> random.nextInt(20) == 0 ? 200 + random.nextInt(56) : random.nextInt(30);
+                };
+            }
+        }
+        return matrix;
     }
 
     @Test

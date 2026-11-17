@@ -39,6 +39,12 @@ public final class PHash {
     static final int LOW_FREQUENCIES = 8;
 
     /**
+     * First frequency kept on each axis. Frequency 0 is skipped: it brings in the DC coefficient, the plain sum of
+     * the luminance, which is never below any other coefficient, so its bit would always be set.
+     */
+    static final int FIRST_FREQUENCY = 1;
+
+    /**
      * Number of orientations returned by {@link #orientationHashes(double[][])}.
      *
      * @since 2025.1.0
@@ -56,7 +62,7 @@ public final class PHash {
     static {
         for (var k = 0; k < LOW_FREQUENCIES; k++) {
             for (var n = 0; n < REDUCED_SIZE; n++) {
-                COSINES[k][n] = Math.cos(Math.PI * k * (2 * n + 1) / (2.0 * REDUCED_SIZE));
+                COSINES[k][n] = Math.cos(Math.PI * (k + FIRST_FREQUENCY) * (2 * n + 1) / (2.0 * REDUCED_SIZE));
             }
         }
     }
@@ -80,7 +86,8 @@ public final class PHash {
      * @since 2025.1.0
      */
     public static long hash(double[][] reduced) {
-        // DCT-II on rows then columns, low frequencies only (scale factors are irrelevant for a median comparison)
+        // DCT-II on rows then columns, low frequencies only, without frequency 0 (scale factors are irrelevant for a
+        // median comparison)
         var vertical = new double[LOW_FREQUENCIES][REDUCED_SIZE];
         for (var k = 0; k < LOW_FREQUENCIES; k++) {
             for (var x = 0; x < REDUCED_SIZE; x++) {

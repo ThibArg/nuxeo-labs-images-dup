@@ -91,6 +91,8 @@ Contribute to the `configuration` extension point of `nuxeo.labs.images.dup.Imag
 
 The first available view is used for hashing. Changing the first view changes the hash signature; run the `computeImageHash` bulk action to update existing documents.
 
+The signature also carries the version of the algorithm, currently `phash64v2`. Hashes stored with another signature are never compared: they are ignored by every search until they are recomputed. So after upgrading from a build that stored `phash64v1` hashes, run the `computeImageHash` bulk action on all the pictures; `force` is not needed, a hash with an outdated signature is always recomputed. Until then, the pictures hashed before the upgrade are not found as duplicates.
+
 Two settings live in `nuxeo.conf` rather than in the extension point, because the template installed by the Marketplace package needs them before the platform starts:
 
 | Property | Default | Role |
@@ -127,7 +129,7 @@ The index actually queried is the one declared as default for the repository, so
 
 ### Keeping the Hash Properties Out of Fulltext
 
-The plugin stores three technical strings on each picture: the band keys in `imgh:bands`, opaque strings such as `f2eabf4f:0:cb94`, the hash in `imgh:phash`, and `imgh:signature`, which is made of the algorithm version and the name of the hashed view, for example `phash64v1/Small`. None of them is content. Left in fulltext, the signature alone makes a search for "small" return every hashed picture. Two different fulltext indexes can pick them up, and they are independent of each other.
+The plugin stores three technical strings on each picture: the band keys in `imgh:bands`, opaque strings such as `f2eabf4f:0:cb94`, the hash in `imgh:phash`, and `imgh:signature`, which is made of the algorithm version and the name of the hashed view, for example `phash64v2/Small`. None of them is content. Left in fulltext, the signature alone makes a search for "small" return every hashed picture. Two different fulltext indexes can pick them up, and they are independent of each other.
 
 **Search engine fulltext is handled for you.** The Marketplace package installs and activates a template that maps the three `imgh:*` properties explicitly, which overrides the default dynamic mapping and removes the `copy_to` into the fulltext field. It detects the search client in use, covers OpenSearch 1.x, OpenSearch 2.x and Elasticsearch 9.x, and also covers the green index of a blue/green reindex. Nothing to configure.
 
