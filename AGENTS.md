@@ -47,6 +47,12 @@ mvn -pl nuxeo-labs-images-dup-core test -Dtest='TestPHash#testOrientations'
 - `TestPHash` and `TestHashBands` are plain unit tests (< 1 s). `TestImageHashService` boots Nuxeo plus an
   embedded OpenSearch node (~45 s), `TestFulltextExclusion` ~5 s.
 - `ERROR ... NUXEO INSTANCE REGISTRATION FILE IS MISSING` in the test output is harmless.
+- **The build needs Nuxeo credentials**, a `<server>` with id `maven-private` in `~/.m2/settings.xml`.
+  Verified (review finding L8): with an empty local repository and empty settings, Maven stops on
+  `Non-resolvable parent POM`, `org.nuxeo:nuxeo-parent:2025.24` being a 404 on `maven-public` and a 401
+  on `maven-private`. An anonymous client gets third-party artifacts from `maven-public`, no Nuxeo one.
+  So the `maven-private` repository of the root POM must stay, and `-o` only works on a machine that
+  has built once with credentials.
 - Run `mvn clean install` before committing Java/XML changes (not needed for README / AGENTS.md /
   `.gitignore`-only commits).
 - Package artifact: `nuxeo-labs-images-dup-package/target/nuxeo-labs-images-dup-package-2025.1.0.zip`.
@@ -170,9 +176,10 @@ paths.
   out and rejected on purpose: property-activated Maven profiles (`-Dsearch=opensearch2`) swapping the
   test-jars and the test mapping contribution, with `nuxeo.test.search.feature` carrying the feature
   FQCN as a *string* so a single test class serves every stack with no compile-time dependency
-  (`DynamicFeaturesLoader.loadFeature(String)`, `@since 2025.4`). It works, but it makes
-  `mvn clean install` depend on `packages.nuxeo.com/maven-private` and, for elasticsearch9, on a Docker
-  container — unacceptable for a repository meant to be public. A `RunnerFeature` cannot soften this:
+  (`DynamicFeaturesLoader.loadFeature(String)`, `@since 2025.4`). It works, but it needs private SNAPSHOT
+  artifacts and, for elasticsearch9, a Docker container — unacceptable for a repository meant to be
+  public. One part of the original argument does not hold, though: `mvn clean install` **already**
+  depends on `packages.nuxeo.com/maven-private`, see "Commands". A `RunnerFeature` cannot soften this:
   Maven resolves dependencies before any test code runs. The README states the support level instead.
 
 ### Repository fulltext (`imagehash-fulltext-exclude-config.xml.nxftl`)

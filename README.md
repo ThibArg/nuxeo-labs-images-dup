@@ -153,7 +153,7 @@ Similar images are found by querying the `imgh:bands` property through the Searc
 >
 > OpenSearch 2.x and Elasticsearch 9.x are supported by design: the plugin resolves the search index from the configuration rather than from a client name, and the fulltext mapping template ships a dedicated block for each stack, written from the official sources of each client. But no automated test runs against them, so validate on a staging environment before relying on them in production.
 >
-> This is a deliberate trade-off. Those two search clients are distributed as private artifacts, and Elasticsearch 9 has no embeddable server. Testing them would make `mvn clean install` require both credentials and a Docker container, instead of working out of the box for everyone.
+> This is a deliberate trade-off. Those two search clients are distributed as private snapshot artifacts, and Elasticsearch 9 has no embeddable server. Testing them would make `mvn clean install` require a Docker container, on top of the Nuxeo credentials it already needs.
 
 To check a deployment manually, index a picture, then run a fulltext search on one of the values of its `imgh:bands` property, for example `f2eabf4f:0:cb94`, on its `imgh:phash` value, and on its `imgh:signature` value, `phash64v2`. None must return the picture: otherwise the mapping template was not applied and the hash properties are polluting the fulltext index. This is exactly what the automated tests assert on OpenSearch 1.x.
 
@@ -259,6 +259,8 @@ mvn clean install
 ```
 
 To skip tests, append `-DskipTests` to the Maven command.
+
+The build needs credentials for the Nuxeo artifact repository. The Nuxeo parent POM and the Nuxeo artifacts are not served anonymously: they come from `https://packages.nuxeo.com/repository/maven-private/`, which requires authentication. Declare your credentials in `~/.m2/settings.xml`, in a `<server>` whose `<id>` is `maven-private`. Without them the build stops immediately on a non-resolvable parent POM.
 
 The marketplace package is produced at:
 
