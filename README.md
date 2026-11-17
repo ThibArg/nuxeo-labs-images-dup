@@ -11,9 +11,20 @@ Nuxeo LTS 2025 plugin for detecting near-duplicate images on documents with the 
 
 The duplicate search runs on a search engine client (OpenSearch or Elasticsearch), see [Search Backend](#search-backend).
 
+> [!IMPORTANT]
+> By essence, this plugin is complex. With listeners, custom schema, cusotm search mapping, etc.
+>
+> It is a **Nuxeo Presales Sandbox plugin**, showing art of the possible but not included as part of the
+> Nuxeo Platform and, so, **not supported**. So, if you need it **we strongly recommend a Nuxeo Partner
+> forks the code and takes ownership** (tuning, maintenance, support)
+
 ## How to Use
 
-Install the Marketplace package. New or updated Picture documents are hashed automatically after their picture views are generated. When a duplicate is detected, the plugin fires the `duplicatedImage` event on the picture, with three properties: `duplicates`, a map of duplicate document id to Hamming distance, closest first and limited to the 100 closest, `duplicatesCount`, the number of duplicates found, and `duplicatesTruncated`, `true` when the search itself may be incomplete, see [Candidate Limit](#candidate-limit). The duplicates listed are those readable by the user who triggered the views generation: a listener forwarding the list to someone else may disclose documents that person cannot read.
+* After installation of the plugin, new or updated Picture documents are hashed automatically after their picture views are generated.
+* When a duplicate is detected, the plugin fires the `duplicatedImage` event on the picture, with three properties:
+  * `duplicates`, a map of duplicate document id to Hamming distance, closest first and limited to the 100 closest
+  * `duplicatesCount`, the number of duplicates found
+  * and `duplicatesTruncated`, `true` when the search itself may be incomplete, see [Candidate Limit](#candidate-limit). The duplicates listed are those readable by the user who triggered the views generation: a listener forwarding the list to someone else may disclose documents that person cannot read.
 
 To search for similar images, call the `ImageHash.FindSimilar` Automation operation with a Picture document as input. Optional parameters are:
 
@@ -24,7 +35,10 @@ To search for similar images, call the `ImageHash.FindSimilar` Automation operat
 | `orientations` | Also compare rotated and mirrored images. | `<searchOrientations>`, default `true` |
 | `maxResults` | Maximum returned documents, at least 1. | `50`, not configurable |
 
-The first three fall back to the [configuration](#configuration), so the usual way to change them for every caller is to contribute, not to pass them on each call.
+The first three fall back to the [configuration](#configuration)
+
+> [!TIP]
+> The recommended way to change them for every caller is to contribute, not to pass them on each call.
 
 Out-of-range values are rejected as a bad request (`400`), the same way by the operation, the page provider and the Java service.
 
@@ -282,20 +296,19 @@ For a published release, add `nuxeo-labs-images-dup` to your Nuxeo Studio projec
 
 **These features are not part of the Nuxeo Production platform.**
 
-These solutions are provided for inspiration and we encourage customers to use them as code samples and learning resources.
+These solutions are provided for inspiration and we encourage customers to use them as code samples and learning
+resources.
 
-This is a moving project (no API maintenance, no deprecation process, etc.) If any of these solutions are found to be useful for the Nuxeo Platform in general, they will be integrated directly into platform, not maintained here.
+> [!TIP]
+> If you need this feature,  **we strongly recommend a Nuxeo Partner or your dev team forks the code
+> and takes ownership** (tuning, maintenance, support)
 
-## License
+## Licence
 
-[Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.html)
+[Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)
 
 ## About Nuxeo
 
-Nuxeo Platform is an open source highly scalable, cloud-native, enterprise content management product with rich multimedia support, written in Java. Data can be stored in both SQL & NoSQL databases.
-
-The development of the Nuxeo Platform is mostly done by Nuxeo employees with an open development model.
-
-The source code, documentation, roadmap, issue tracker, testing, benchmarks are all public.
-
-More information is available at [Hyland/Nuxeo](https://www.hyland.com/en/solutions/products/nuxeo-platform).
+[Nuxeo](https://www.hyland.com/en/products/nuxeo-platform), developed by [Hyland](https://www.hyland.com),
+is a Content Services platform. It provides an easy-to-use, highly customizable and extensible
+architecture for building content-centric applications.
