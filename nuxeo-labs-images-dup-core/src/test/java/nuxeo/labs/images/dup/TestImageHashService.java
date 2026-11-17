@@ -505,6 +505,30 @@ public class TestImageHashService {
                 ids(service.findSimilar(fromSmall, session.getPrincipal(), null, null, null)));
     }
 
+    /**
+     * The radius and the orientations multiply the cost of a search on the cluster shared by the whole platform. The
+     * configured search values are what every user may ask for, only administrators may ask for more.
+     */
+    @Test
+    @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-cheap-search-contrib.xml")
+    public void testSearchCostIsCappedForNonAdministrators() {
+        var folder = createFolder("shared", true);
+        var first = createPicture(folder.getPathAsString(), "first", original);
+        var copy = createPicture(folder.getPathAsString(), "copy", original);
+        viewsGenerated(first, copy);
+
+        // the configured values, explicit or not, are allowed to everyone
+        assertEquals(Set.of(copy.getId()), ids(service.findSimilar(first, JOHN, null, null, null)));
+        assertEquals(Set.of(copy.getId()), ids(service.findSimilar(first, JOHN, 3, 0, Boolean.FALSE)));
+        // above them, administrators only
+        assertEquals(403, assertThrows(NuxeoException.class,
+                () -> service.findSimilar(first, JOHN, null, 1, null)).getStatusCode());
+        assertEquals(403, assertThrows(NuxeoException.class,
+                () -> service.findSimilar(first, JOHN, null, null, Boolean.TRUE)).getStatusCode());
+        assertEquals(Set.of(copy.getId()),
+                ids(service.findSimilar(first, session.getPrincipal(), null, 2, Boolean.TRUE)));
+    }
+
     /** Out-of-range parameters are a client error, whatever the entry point. */
     @Test
     public void testFindSimilarValidatesItsParameters() {

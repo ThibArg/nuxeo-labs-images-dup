@@ -311,6 +311,10 @@ paths.
   the check that came with it failed the server start for an optional feature. ImageIO already caches in
   `java.io.tmpdir`, which `nuxeoctl` sets to the Nuxeo temporary directory (`NuxeoLauncher.java:747`).
   `testServiceLeavesTheImageIOCacheDirectoryAlone` guards it.
+- **`findSimilar` caps the search cost for non-administrators** (review finding M8): a radius above the
+  configured `searchRadius`, or orientations when `searchOrientations` is off, is a 403. The threshold
+  is free, it does not change the candidate query. The automatic detection and `detectDuplicates` call
+  `search()` directly and are not concerned. The tab does not know the ceiling, it still offers 0-2.
 - **Range validation lives in `findSimilar`** (`checkRange`, `NuxeoException` with a 400 status, review
   finding L2), so that the operation, the page provider and Java callers share it. The page provider
   keeps its own `parseInt`, needed for values that are not integers; `maxResults` / `limit` are checked

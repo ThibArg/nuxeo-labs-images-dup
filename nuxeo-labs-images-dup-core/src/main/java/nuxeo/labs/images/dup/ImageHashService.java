@@ -168,6 +168,9 @@ public interface ImageHashService {
      * Returns the documents readable by the principal whose image is a near duplicate of the document's one, closest
      * first. {@code null} parameters use the configured search values.
      * <p>
+     * The configured search radius and orientations are also the most a principal who is not an administrator may
+     * ask for: both multiply the cost of the search.
+     * <p>
      * The search examines at most the configured number of candidates. Beyond it the result is
      * {@link SimilarImages#truncated() truncated}: callers must not present it as complete.
      *
@@ -175,8 +178,9 @@ public interface ImageHashService {
      * @param radius 0 to 2, see {@link HashBands}
      * @param orientations also find rotated and mirrored images
      * @throws org.nuxeo.ecm.core.api.NuxeoException if no search engine serves the repository, see
-     *             {@link #updateHashAndDetectDuplicates}, or, with a 400 status, if {@code threshold} or
-     *             {@code radius} is out of range
+     *             {@link #updateHashAndDetectDuplicates}, with a 400 status if {@code threshold} or {@code radius}
+     *             is out of range, or with a 403 status if the principal is not an administrator and asks for more
+     *             than the configured search radius or orientations
      * @since 2025.1.0
      */
     SimilarImages findSimilar(DocumentModel doc, NuxeoPrincipal principal, @Nullable Integer threshold,

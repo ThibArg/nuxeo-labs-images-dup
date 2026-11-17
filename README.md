@@ -28,6 +28,8 @@ The first three fall back to the [configuration](#configuration), so the usual w
 
 Out-of-range values are rejected as a bad request (`400`), the same way by the operation, the page provider and the Java service.
 
+`radius` and `orientations` multiply the number of keys queried, so the load each search puts on the search cluster. The configured `searchRadius` and `searchOrientations` are therefore a ceiling for users who are not administrators: with the defaults, they can search at radius 0 or 1, with or without orientations, and a request for radius 2 is refused (`403`). Administrators are not limited.
+
 The operation sets the `imageHashTruncated` context variable: `true` when the returned list may be incomplete, see [Candidate Limit](#candidate-limit).
 
 **Hamming distance** is the number of differing bits between two 64-bit hashes: `0` means identical hashes, and the lower the value, the more similar the images. `threshold` is the distance at or below which two images are considered duplicates.
@@ -71,7 +73,7 @@ With Web UI, documents with the Picture facet get a **Similar Images** tab. Web 
 
 The tab lists the near duplicates the current user can read, closest first, in the standard grid (thumbnails) and list views. The list view shows the Hamming distance of each document.
 
-The toolbar at the top tunes the search with the same parameters as the operation: **Threshold**, **Radius**, **Orientations** and **Max results**. An empty field, or **Default**, uses the configured value. Click **Search** or press Enter to run the search, **Reset** goes back to the configured values. Nothing is searched until the tab is displayed.
+The toolbar at the top tunes the search with the same parameters as the operation: **Threshold**, **Radius**, **Orientations** and **Max results**. An empty field, or **Default**, uses the configured value. The toolbar offers every value to every user: a user who is not an administrator and picks more than the configured radius or orientations gets the generic search error. Click **Search** or press Enter to run the search, **Reset** goes back to the configured values. Nothing is searched until the tab is displayed.
 
 A warning is displayed above the list when the search reached the [candidate limit](#candidate-limit) and the list may be incomplete. The warning travels with the listed documents, so it cannot be shown when the list is empty.
 

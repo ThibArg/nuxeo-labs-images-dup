@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.test.cheap.search">
+
+  <require>nuxeo.labs.images.dup.ImageHashService</require>
+
+  <!-- The cheapest search settings: what non-administrators must not exceed -->
+  <extension target="nuxeo.labs.images.dup.ImageHashService" point="configuration">
+    <configuration>
+      <searchRadius>0</searchRadius>
+      <searchOrientations>false</searchOrientations>
+    </configuration>
+  </extension>
+
+</component>

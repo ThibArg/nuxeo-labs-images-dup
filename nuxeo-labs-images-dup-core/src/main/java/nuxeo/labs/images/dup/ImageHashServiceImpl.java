@@ -103,6 +103,8 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
 
     protected static final int SC_BAD_REQUEST = 400;
 
+    protected static final int SC_FORBIDDEN = 403;
+
     /** Context data read by the notification listener; Nuxeo has no constant for it. */
     protected static final String DISABLE_NOTIFICATION_SERVICE = "disableNotificationService";
 
@@ -220,6 +222,17 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
             @Nullable Integer radius, @Nullable Boolean orientations) {
         checkRange("threshold", threshold, Long.SIZE);
         checkRange("radius", radius, HashBands.MAX_RADIUS);
+        if (!principal.isAdministrator()) {
+            // each step of radius and the orientations multiply the keys queried, hence the load on the search
+            // cluster: the configured values are what every user may ask for
+            if (radius != null && radius > config.getSearchRadius()) {
+                throw new NuxeoException("Only administrators can search with a radius above: %d, got: %d".formatted(
+                        config.getSearchRadius(), radius), SC_FORBIDDEN);
+            }
+            if (Boolean.TRUE.equals(orientations) && !config.isSearchOrientations()) {
+                throw new NuxeoException("Only administrators can search with orientations", SC_FORBIDDEN);
+            }
+        }
         boolean withOrientations = requireNonNullElse(orientations, config.isSearchOrientations());
         var computed = storedOrComputed(doc, withOrientations);
         if (computed == null || computed.degenerate()) {
