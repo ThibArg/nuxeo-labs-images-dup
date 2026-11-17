@@ -36,7 +36,24 @@ The operation sets the `imageHashTruncated` context variable: `true` when the re
 
 **`maxResults` does not make the search faster.** The candidate query and the distance comparison always run on the whole candidate set, then the results are sorted by distance and only then truncated. So `maxResults` only reduces the number of documents loaded from the repository and the size of the response. What drives the search cost is `radius` and `orientations`, which multiplies the number of queried keys by 8. The hard limit on the candidate set is `maxCandidates`, see [Candidate Limit](#candidate-limit).
 
-To compute or refresh hashes for existing documents, submit the `computeImageHash` bulk action with a query selecting Picture documents. Set its optional `force` parameter to `true` to recompute hashes that already use the current configuration.
+**Duplicates arriving together are not detected on the spot.** The automatic detection searches the search index, and a picture enters it a moment after its hash is stored. Two copies hashed within that delay of each other, typically the same file uploaded twice in one import, do not see each other and no event is fired for either. The delay is the indexing latency: seconds on an idle platform, more during a mass import. The `detectImageDuplicates` bulk action is the second pass that catches them, see below.
+
+To compute or refresh hashes for existing documents, submit the `computeImageHash` bulk action with a query selecting Picture documents. Set its optional `force` parameter to `true` to recompute hashes that already use the current configuration. This action fires no `duplicatedImage` event.
+
+To detect duplicates among pictures that are already hashed, submit the `detectImageDuplicates` bulk action once they are indexed, on demand or from a scheduler: after an import, to catch the copies that arrived together, or after `computeImageHash`. For example, for the pictures created since a given date:
+
+```
+POST /nuxeo/api/v1/automation/Bulk.RunAction
+{"params": {"action": "detectImageDuplicates", "query": "SELECT * FROM Document WHERE ecm:mixinType = 'Picture' AND dc:created >= DATE '2026-11-01'"}}
+```
+
+It computes nothing: for each selected picture hashed with the current configuration it runs the detection search and fires `duplicatedImage` when duplicates are found. The others are skipped. Three things differ from the automatic detection:
+
+- the duplicates listed are those readable by the user who runs the action, an administrator, not by the user who uploaded the picture;
+- a pair is reported from both sides when both pictures are selected, and pairs reported earlier are reported again, so listeners of `duplicatedImage` must cope with repetitions;
+- a failing search counts in the `errorCount` of the command status. The number of pictures with duplicates is in its `result`, under `picturesWithDuplicates`.
+
+Like `computeImageHash`, it can only be launched by administrators.
 
 The hash is stored in three properties of the `ImageHash` facet, `imgh:phash`, `imgh:bands` and `imgh:signature`. They are declared `secured`: only administrators and the system can write them, so a user who can edit a picture cannot blank or forge its hash to hide it from detection. Custom code calling `ImageHashService.updateHash` must therefore run under an administrator or system login.
 

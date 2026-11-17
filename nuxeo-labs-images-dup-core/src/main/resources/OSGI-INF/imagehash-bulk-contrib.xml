@@ -6,6 +6,9 @@
   <extension target="org.nuxeo.ecm.core.bulk" point="actions">
     <action name="computeImageHash" defaultScroller="repository" inputStream="bulk/computeImageHash"
       bucketSize="100" batchSize="20" httpEnabled="false" />
+    <!-- Second pass of the duplicate detection, on pictures already hashed and indexed -->
+    <action name="detectImageDuplicates" defaultScroller="repository" inputStream="bulk/detectImageDuplicates"
+      bucketSize="100" batchSize="20" httpEnabled="false" />
   </extension>
 
   <extension target="org.nuxeo.runtime.stream.service" point="streamProcessor">
@@ -13,6 +16,12 @@
       defaultConcurrency="${nuxeo.bulk.action.computeImageHash.defaultConcurrency:=2}"
       defaultPartitions="${nuxeo.bulk.action.computeImageHash.defaultPartitions:=4}">
       <policy name="default" maxRetries="${nuxeo.bulk.action.computeImageHash.maxRetries:=1}" delay="1s"
+        maxDelay="10s" continueOnFailure="true" />
+    </streamProcessor>
+    <streamProcessor name="detectImageDuplicates" class="nuxeo.labs.images.dup.bulk.DetectImageDuplicatesAction"
+      defaultConcurrency="${nuxeo.bulk.action.detectImageDuplicates.defaultConcurrency:=2}"
+      defaultPartitions="${nuxeo.bulk.action.detectImageDuplicates.defaultPartitions:=4}">
+      <policy name="default" maxRetries="${nuxeo.bulk.action.detectImageDuplicates.maxRetries:=1}" delay="1s"
         maxDelay="10s" continueOnFailure="true" />
     </streamProcessor>
   </extension>

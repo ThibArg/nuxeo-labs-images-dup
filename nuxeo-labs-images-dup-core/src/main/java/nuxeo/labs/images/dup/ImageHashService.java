@@ -125,6 +125,22 @@ public interface ImageHashService {
     void updateHashAndDetectDuplicates(CoreSession session, DocumentModel doc, NuxeoPrincipal principal);
 
     /**
+     * Searches for the near duplicates of a document that is already hashed, with the detection settings, and fires
+     * {@link #DUPLICATED_IMAGE_EVENT} when some, readable by the principal, are found. Neither computes nor stores a
+     * hash: a document that is not hashed with the current signature is skipped.
+     * <p>
+     * This is the second pass of the detection, see the {@code detectImageDuplicates} bulk action:
+     * {@link #updateHashAndDetectDuplicates} only sees the pictures already in the search index, so pictures hashed
+     * within the indexing delay of each other do not see each other.
+     *
+     * @return {@code true} if the event was fired
+     * @throws org.nuxeo.ecm.core.api.NuxeoException if no search engine serves the repository. Unlike in
+     *             {@link #updateHashAndDetectDuplicates}, a failing search is thrown too: nothing else is at stake
+     * @since 2025.1.0
+     */
+    boolean detectDuplicates(CoreSession session, DocumentModel doc, NuxeoPrincipal principal);
+
+    /**
      * Returns the documents readable by the principal whose image is a near duplicate of the document's one, closest
      * first. {@code null} parameters use the configured search values.
      * <p>

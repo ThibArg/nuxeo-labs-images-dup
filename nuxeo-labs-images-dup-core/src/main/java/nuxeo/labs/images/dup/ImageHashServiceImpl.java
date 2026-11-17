@@ -191,6 +191,35 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
      * @since 2025.1.0
      */
     @Override
+    public boolean detectDuplicates(CoreSession session, DocumentModel doc, NuxeoPrincipal principal) {
+        if (!signature.equals(getStoredSignature(doc))) {
+            return false;
+        }
+        Computed computed;
+        if (config.isDetectionOrientations()) {
+            // the hashes of the orientations are not stored, they need the image
+            computed = compute(doc);
+        } else {
+            // the stored hash is the one the index knows, and reading it spares fetching and decoding a blob
+            var hasBands = doc.getPropertyValue(BANDS_PROPERTY) instanceof Object[] bands && bands.length > 0;
+            computed = new Computed(PHash.fromHex((String) doc.getPropertyValue(PHASH_PROPERTY)), null, !hasBands);
+        }
+        if (computed == null || computed.degenerate()) {
+            return false;
+        }
+        var duplicates = search(doc, principal, computed, requireSearchIndex(doc.getRepositoryName()),
+                config.isDetectionOrientations(), config.getDetectionRadius(), config.getThreshold());
+        if (duplicates.images().isEmpty()) {
+            return false;
+        }
+        fireDuplicatedImage(session, doc, principal, duplicates);
+        return true;
+    }
+
+    /**
+     * @since 2025.1.0
+     */
+    @Override
     public SimilarImages findSimilar(DocumentModel doc, NuxeoPrincipal principal, @Nullable Integer threshold,
             @Nullable Integer radius, @Nullable Boolean orientations) {
         var computed = compute(doc);

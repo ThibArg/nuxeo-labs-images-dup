@@ -31,11 +31,13 @@ Everything funnels into `ImageHashServiceImpl`:
 - `ImageHash.FindSimilar` operation and `imagehash_similar_images` page provider → `findSimilar`.
 - `computeImageHash` bulk action → `updateHash`. Fires no event. `httpEnabled="false"`, so through
   `Bulk.RunAction` or REST only administrators can launch it.
+- `detectImageDuplicates` bulk action → `detectDuplicates` → fires `duplicatedImage`. Computes and stores
+  nothing. Same `httpEnabled="false"`.
 
 ## Commands
 
 ```bash
-mvn clean install                                        # build + all tests + marketplace zip (~35 s warm)
+mvn clean install                                        # build + all tests + marketplace zip (~40 s warm)
 mvn -o clean install                                     # same, offline, once dependencies are cached
 mvn -pl nuxeo-labs-images-dup-core test                  # tests only
 mvn -pl nuxeo-labs-images-dup-core test -Dtest=TestPHash
@@ -43,7 +45,7 @@ mvn -pl nuxeo-labs-images-dup-core test -Dtest='TestPHash#testOrientations'
 ```
 
 - `TestPHash` and `TestHashBands` are plain unit tests (< 1 s). `TestImageHashService` boots Nuxeo plus an
-  embedded OpenSearch node (~25 s), `TestFulltextExclusion` ~5 s.
+  embedded OpenSearch node (~30 s), `TestFulltextExclusion` ~5 s.
 - `ERROR ... NUXEO INSTANCE REGISTRATION FILE IS MISSING` in the test output is harmless.
 - Run `mvn clean install` before committing Java/XML changes (not needed for README / AGENTS.md /
   `.gitignore`-only commits).
@@ -304,6 +306,22 @@ paths.
   a `computeImageHash` command submitted from Java for a non-administrator writes nothing.
   `testHashPropertiesAreSecured` pushes john with `NuxeoLoginContext.create(JOHN).login()`; opening a
   session for john alone leaves the thread logged in as Administrator and the write is accepted.
+- **Detection is two passes, and the first one is blind to simultaneous uploads (review finding H3).**
+  The listener searches the engine index, and a hash only gets there after its commit, the indexing
+  stream and an index refresh. Two copies hashed within that latency of each other fire no event. The
+  `detectImageDuplicates` bulk action is the second pass, to run once the pictures are indexed.
+  - **Do not "fix" this by comparing the hashes inside the event bundle**, as the review report suggests:
+    `RecomputeViewsAction` calls `pictureViewsHelper.newTransaction()` before each document
+    (`RecomputeViewsAction.java:106`), so in production a bundle holds **one** event. The report's
+    reproduction, and `testDetectDuplicatesBulkAction`, put several events in one transaction only
+    because the test fires them by hand.
+  - `detectDuplicates` reads the **stored** hash when `detectionOrientations` is off, the default, and
+    decodes the image only when it is on. It skips documents whose signature is not the current one.
+  - Unlike `updateHashAndDetectDuplicates` it lets a failing search throw: there is no hash to protect,
+    and the action must count it in `errorCount`.
+  - Known and accepted: the event principal is the user of the command, a pair is reported from both
+    sides, and pairs already reported are reported again.
+  - The latency race itself is reasoned from the sources, never reproduced here.
 - **Per-document failure isolation, three places (review finding M3).** `readImage` catches
   `IOException | RuntimeException` per view: the JDK PNG reader throws `IllegalArgumentException` on some
   headers, and a blob provider can throw unchecked. The loops of `ImageHashListener` and

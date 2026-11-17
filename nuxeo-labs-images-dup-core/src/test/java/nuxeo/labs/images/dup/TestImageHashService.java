@@ -99,6 +99,7 @@ import org.nuxeo.runtime.test.runner.FeaturesRunner;
 import org.nuxeo.runtime.test.runner.TransactionalFeature;
 
 import nuxeo.labs.images.dup.bulk.ComputeImageHashAction;
+import nuxeo.labs.images.dup.bulk.DetectImageDuplicatesAction;
 import nuxeo.labs.images.dup.io.SimilarImageJsonEnricher;
 import nuxeo.labs.images.dup.operations.FindSimilarImagesOp;
 import nuxeo.labs.images.dup.pageprovider.SimilarImagesPageProvider;
@@ -392,6 +393,47 @@ public class TestImageHashService {
                                    .build();
             assertEquals("hash metadata found in fulltext: " + term, 0, searchService.search(query).getHitsCount());
         }
+    }
+
+    /**
+     * Duplicates hashed at the same time are not detected on the spot: neither is in the search index yet when the
+     * other one is searched. The detection bulk action, run once they are indexed, reports them.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testDetectDuplicatesBulkAction() throws InterruptedException {
+        var first = createPicture("/", "first", original);
+        var resized = createPicture("/", "resized", TestImages.resize(original, 280, 210));
+        var other = createPicture("/", "other", TestImages.sample(7, 560, 420));
+        // one transaction, one event bundle
+        viewsGenerated(first, resized, other);
+        assertTrue("if this fails the immediate detection now covers this case: rework this test",
+                DuplicatedImageCaptureListener.getEvents().isEmpty());
+        // never hashed: the action only detects, it must skip it
+        createPicture("/", "unhashed", original);
+        txFeature.nextTransaction();
+
+        var commandId = bulkService.submit(new BulkCommand.Builder(DetectImageDuplicatesAction.ACTION_NAME,
+                "SELECT * FROM Picture", session.getPrincipal().getName()).repository(session.getRepositoryName())
+                                                                           .build());
+        assertTrue(bulkService.await(commandId, Duration.ofSeconds(60)));
+        var status = bulkService.getStatus(commandId);
+        assertEquals(BulkStatus.State.COMPLETED, status.getState());
+        assertFalse(status.getErrorMessage(), status.hasError());
+        var picturesWithDuplicates = (Number) status.getResult()
+                                                    .get(DetectImageDuplicatesAction.RESULT_PICTURES_WITH_DUPLICATES);
+        assertEquals(2, picturesWithDuplicates.intValue());
+
+        var duplicatesBySource = new HashMap<String, Set<String>>();
+        for (var event : DuplicatedImageCaptureListener.getEvents()) {
+            var ctx = (DocumentEventContext) event.getContext();
+            duplicatesBySource.put(ctx.getSourceDocument().getId(),
+                    ((Map<String, Integer>) ctx.getProperty(DUPLICATES_EVENT_PROPERTY)).keySet());
+        }
+        // a pair is reported once from each side
+        assertEquals(Map.of(first.getId(), Set.of(resized.getId()), resized.getId(), Set.of(first.getId())),
+                duplicatesBySource);
+        assertEquals(2, DuplicatedImageCaptureListener.getEvents().size());
     }
 
     /** The image reader throws a runtime exception on the first view, not an {@link IOException}. */
