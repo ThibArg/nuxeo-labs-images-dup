@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Nuxeo LTS 2025 plugin. Detects near-duplicate images on `Picture`-faceted documents using a
-64-bit DCT perceptual hash stored on the document and searched with NXQL.
+64-bit DCT perceptual hash stored on the document and searched with NXQL on the search engine.
 
 ## Repository conventions
 
@@ -12,30 +12,42 @@ Nuxeo LTS 2025 plugin. Detects near-duplicate images on `Picture`-faceted docume
   **English**. The one exception is the French Web UI translation, `messages-fr.json`.
 - `AGENTS.md` is deliberately **not** in `.gitignore` here, it is committed.
 - Javadoc tag is `@since 2025.1.0` everywhere, not `@since 2025.XX`.
-- No CI, no linter, no formatter config in this repo. Java 21, Maven 3.8.
+- No CI, no linter, no formatter config. Java 21, Maven 3.8. `.github/modernize/` is a self-ignored
+  VS Code tool artifact, not CI.
 
-## Modules
+## Modules and entry points
 
 | Module | Content |
 |---|---|
 | `nuxeo-labs-images-dup-core` | All Java code, schema, OSGI-INF contributions, Web UI files, tests |
-| `nuxeo-labs-images-dup-package` | Marketplace package assembly only (ant-assembly-maven-plugin), no code |
+| `nuxeo-labs-images-dup-package` | Marketplace assembly (`assembly.xml`) + the `nuxeo-labs-images-dup` configuration template, no code |
 
 Bundle symbolic name used in `@Deploy`: `nuxeo.labs.images.dup.nuxeo-labs-images-dup-core`.
+
+Everything funnels into `ImageHashServiceImpl`:
+
+- `ImageHashListener`, async post-commit on `pictureViewsGenerationDone` → `updateHashAndDetectDuplicates`
+  → fires `duplicatedImage`.
+- `ImageHash.FindSimilar` operation and `imagehash_similar_images` page provider → `findSimilar`.
+- `computeImageHash` bulk action → `updateHash`. Fires no event. `httpEnabled="false"`, so through
+  `Bulk.RunAction` or REST only administrators can launch it.
 
 ## Commands
 
 ```bash
-mvn clean install                                        # full build + tests + marketplace zip (~15 s warm)
+mvn clean install                                        # build + all tests + marketplace zip (~35 s warm)
+mvn -o clean install                                     # same, offline, once dependencies are cached
 mvn -pl nuxeo-labs-images-dup-core test                  # tests only
 mvn -pl nuxeo-labs-images-dup-core test -Dtest=TestPHash
 mvn -pl nuxeo-labs-images-dup-core test -Dtest='TestPHash#testOrientations'
 ```
 
-Run `mvn clean install` before committing Java/XML changes (not needed for README / AGENTS.md /
-`.gitignore`-only commits).
-
-Package artifact: `nuxeo-labs-images-dup-package/target/nuxeo-labs-images-dup-package-2025.1.0.zip`.
+- `TestPHash` and `TestHashBands` are plain unit tests (< 1 s). `TestImageHashService` boots Nuxeo plus an
+  embedded OpenSearch node (~16 s), `TestFulltextExclusion` ~5 s.
+- `ERROR ... NUXEO INSTANCE REGISTRATION FILE IS MISSING` in the test output is harmless.
+- Run `mvn clean install` before committing Java/XML changes (not needed for README / AGENTS.md /
+  `.gitignore`-only commits).
+- Package artifact: `nuxeo-labs-images-dup-package/target/nuxeo-labs-images-dup-package-2025.1.0.zip`.
 
 ## Search backend: a search engine is required
 
@@ -96,6 +108,11 @@ the admin configures nothing. Output file names must keep the `-config.xml` suff
 `OSGiRuntimeService.loadConfig` deploys nothing else, and must never be `default-repository-config.xml`,
 which would overwrite the database template's own output.
 
+**Each fix is duplicated, keep the copies in sync.** The templates are not loaded by tests, so tests run
+hand-written counterparts: `src/test/resources/OSGI-INF/test-opensearch-mapping-contrib.xml` (index
+`nxutest`) and `test-fulltext-exclude-contrib.xml` (repository `test`). The README also reproduces the
+fulltext XML. A change to a template that is not mirrored there is untested.
+
 ### Engine mapping (`imagehash-search-mapping-config.xml.nxftl`)
 
 - The `strings` template carrying `copy_to: "all_field"` and the `IndexConfig.merge()` logic are
@@ -104,10 +121,8 @@ which would overwrite the database template's own output.
   descriptor has `append="true"`; in the other direction `extraMappingContents` is silently dropped.
   Every block declares `<require>` on the component holding the base mapping. Remove it and the
   override vanishes without any error.
-- **One template, auto-activated, covering every stack.**
-  `install/templates/nuxeo-labs-images-dup/` ships a single `.nxftl` with six `<#if>` blocks: blue and
-  green for opensearch1, opensearch2 and elasticsearch9. `assembly.xml` activates it with
-  `<config addtemplate=.../>`, so the admin configures nothing.
+- Six `<#if>` blocks, blue and green for opensearch1, opensearch2 and elasticsearch9, each guarded by its
+  own `nuxeo.search.client.{default,green}.<stack>.index.name` property.
 - **Why guarding on an absent property is safe.** `TextTemplate` builds the FreeMarker model as a nested
   map by splitting dotted keys (`TextTemplate.java:382-416`), so a property from a template that was
   never activated is simply missing. The parenthesised form `(a.b.c)?has_content` covers a missing
@@ -135,12 +150,11 @@ which would overwrite the database template's own output.
   `mvn clean install` depend on `packages.nuxeo.com/maven-private` and, for elasticsearch9, on a Docker
   container — unacceptable for a repository meant to be public. A `RunnerFeature` cannot soften this:
   Maven resolves dependencies before any test code runs. The README states the support level instead.
-- **Repository fulltext is a separate problem**, fixed by the other `.nxftl`, see below. Beyond noise,
-  writing `imgh:bands` marks the path dirty and schedules an extra `FulltextExtractorWork` per hash
-  store; `store()` disables versioning, DC, audit and notifications but cannot disable that.
 
 ### Repository fulltext (`imagehash-fulltext-exclude-config.xml.nxftl`)
 
+- Beyond noise, writing `imgh:bands` marks the path dirty and schedules an extra `FulltextExtractorWork`
+  per hash store; `store()` disables versioning, DC, audit and notifications but cannot disable that.
 - **Branches on `nuxeo.db.type`**, the only backend discriminator visible to FreeMarker. Beware the
   values: H2 is **`default`**, never `h2`, and MariaDB reports **`mysql`**. `nuxeo.dbtemplate`,
   `nuxeo.core.config` and `nuxeo.template.basedir` do **not** exist; `nuxeo.templates` lists only what
@@ -184,13 +198,11 @@ which would overwrite the database template's own output.
   (verified: 0.3 s, no runtime started), so the VCS contribution is never registered on a DBS run.
   The DBS shape stays untested.
 
-
 ## Testing
 
-- **Still no external service, but no longer in-memory either.** `TestImageHashService` uses
+- **No external service, no Docker, works offline.** `TestImageHashService` uses
   `OpenSearchCoreSearchFeature`, and `OpenSearchFeature` starts an **embedded in-JVM OpenSearch node**
-  when `nuxeo.test.opensearch1.servers` is unset. Plain `mvn test` works offline, no Docker. It costs
-  ~10 s of node startup, the class went from ~7 s to ~18 s. The repository stays H2 in-memory VCS.
+  when `nuxeo.test.opensearch1.servers` is unset (~10 s of startup). The repository is H2 in-memory VCS.
   Point the suite at a real cluster with `-Dnuxeo.test.opensearch1.servers=http://localhost:9200`.
 - Required test-jars, both version-managed by the Nuxeo parent:
   `org.nuxeo.ecm.core:nuxeo-search-client-opensearch1` and
@@ -279,6 +291,8 @@ and `imagehash-webui-contrib.xml`. Web UI is only an `<optional-dependencies>` o
   `append` merges into Web UI's `messages.json` (`AppendCommand` merges JSON). Requiring the Web UI
   bundle when it is not installed skips the fragment and logs "Unknown bundle" as a deployment error.
   Without Web UI the fragment still copies its files under `nuxeo.war/ui`, which is harmless.
+- i18n files are excluded from the plain unzip and `append`ed one by one; `messages-fr.json` is appended
+  to both `messages-fr.json` and `messages-fr-FR.json`. A new language needs its own `<append>` lines.
 - **Every document tab page is rendered, selected or not**: the views `iron-pages` only toggles the
   `visible` attribute (`selected-attribute="visible"`). `nuxeo-results` sits in a
   `<dom-if if="[[visible]]">`, otherwise its view setup would run a similarity search on every Picture
