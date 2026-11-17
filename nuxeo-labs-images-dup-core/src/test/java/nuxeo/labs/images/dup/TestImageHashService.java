@@ -67,6 +67,7 @@ import org.nuxeo.ecm.core.api.NuxeoException;
 import org.nuxeo.ecm.core.api.NuxeoPrincipal;
 import org.nuxeo.ecm.core.api.impl.UserPrincipal;
 import org.nuxeo.ecm.core.api.impl.blob.ByteArrayBlob;
+import org.nuxeo.ecm.core.api.model.ReadOnlyPropertyException;
 import org.nuxeo.ecm.core.api.security.ACE;
 import org.nuxeo.ecm.core.api.security.ACL;
 import org.nuxeo.ecm.core.api.security.ACP;
@@ -88,6 +89,7 @@ import org.nuxeo.ecm.core.test.annotations.RepositoryConfig;
 import org.nuxeo.ecm.platform.query.api.PageProvider;
 import org.nuxeo.ecm.platform.query.api.PageProviderService;
 import org.nuxeo.ecm.platform.query.api.PageProviderSpec;
+import org.nuxeo.runtime.api.login.NuxeoLoginContext;
 import org.nuxeo.runtime.test.runner.Deploy;
 import org.nuxeo.runtime.test.runner.Features;
 import org.nuxeo.runtime.test.runner.FeaturesRunner;
@@ -382,6 +384,51 @@ public class TestImageHashService {
                                    .build();
             assertEquals("hash metadata found in fulltext: " + term, 0, searchService.search(query).getHitsCount());
         }
+    }
+
+    /**
+     * A user who can write a picture must not be able to hide it from detection, or to forge its hash.
+     * <p>
+     * The secured check reads the login of the current thread, not the principal of the session, so opening a session
+     * for john is not enough: he is pushed on the login stack, as a REST call does.
+     */
+    @Test
+    public void testHashPropertiesAreSecured() {
+        var folder = createFolder("writable", true);
+        var acp = folder.getACP();
+        acp.getOrCreateACL().add(new ACE(JOHN.getName(), SecurityConstants.READ_WRITE, true));
+        session.setACP(folder.getRef(), acp, true);
+        var first = createPicture(folder.getPathAsString(), "first", original);
+        var resized = createPicture(folder.getPathAsString(), "resized", TestImages.resize(original, 280, 210));
+        viewsGenerated(first, resized);
+        assertEquals(Set.of(resized.getId()), ids(service.findSimilar(first, JOHN, null, null, null)));
+
+        try (var ignored = loginAs(JOHN)) {
+            var johnSession = CoreInstance.getCoreSession(session.getRepositoryName(), JOHN);
+            var doc = johnSession.getDocument(first.getRef());
+            // john does have Write on the picture
+            doc.setPropertyValue("dc:description", "updated by john");
+            assertThrows(ReadOnlyPropertyException.class,
+                    () -> doc.setPropertyValue(BANDS_PROPERTY, new ArrayList<String>()));
+            assertThrows(ReadOnlyPropertyException.class,
+                    () -> doc.setPropertyValue(PHASH_PROPERTY, "0000000000000000"));
+            assertThrows(ReadOnlyPropertyException.class, () -> doc.setPropertyValue(SIGNATURE_PROPERTY, "forged"));
+            johnSession.saveDocument(doc);
+        }
+        txFeature.nextTransaction();
+
+        var saved = session.getDocument(first.getRef());
+        assertEquals("updated by john", saved.getPropertyValue("dc:description"));
+        assertEquals(HashBands.BAND_COUNT, ((Object[]) saved.getPropertyValue(BANDS_PROPERTY)).length);
+        assertEquals(service.getSignature(), saved.getPropertyValue(SIGNATURE_PROPERTY));
+        assertEquals(Set.of(resized.getId()), ids(service.findSimilar(first, JOHN, null, null, null)));
+    }
+
+    /** Pushes the principal on the login stack of the current thread; closing the context pops it. */
+    protected static NuxeoLoginContext loginAs(NuxeoPrincipal principal) {
+        var loginContext = NuxeoLoginContext.create(principal);
+        loginContext.login();
+        return loginContext;
     }
 
     protected DocumentModel createFolder(String name, boolean readableByJohn) {

@@ -274,6 +274,16 @@ paths.
   audit, notifications and picture-views regeneration via `putContextData` before `saveDocument`. Keep
   that block intact: removing `DISABLE_PICTURE_VIEWS_GENERATION_LISTENER` creates an infinite
   regeneration loop, removing the others bumps `dc:modified` and creates versions.
+- **The three `imgh:*` properties are `secured="true"`** (`imagehash-schemas-contrib.xml`, review finding
+  M2): without it any user with Write could blank `imgh:bands` and, the signature still being current,
+  stay invisible until a `force` run. The check is `isSecured() && !NuxeoPrincipal.isCurrentAdministrator()`
+  (`AbstractProperty.java:375-377`): it reads the **login stack of the current thread**, not the
+  `CoreSession` principal, and a thread with no login at all is refused too. The legitimate writers pass
+  because the async bundle is reconnected under a system login (`ReconnectedEventBundleImpl.java:85`)
+  and the bulk computation logs in as the command's user (`AbstractBaseBulkComputation.java:148-151`), so
+  a `computeImageHash` command submitted from Java for a non-administrator writes nothing.
+  `testHashPropertiesAreSecured` pushes john with `NuxeoLoginContext.create(JOHN).login()`; opening a
+  session for john alone leaves the thread logged in as Administrator and the write is accepted.
 - `ImageHashListener` writes with `CoreInstance.getCoreSessionSystem(...)` so the hash is stored even
   when the triggering user cannot write the document, but the duplicate **search** uses the triggering
   principal, so the fired event only lists duplicates that user can read.

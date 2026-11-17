@@ -5,6 +5,15 @@
 
   <extension target="org.nuxeo.ecm.core.schema.TypeService" point="schema">
     <schema name="imagehash" prefix="imgh" src="schemas/imagehash.xsd" />
+
+    <!--
+      Technical metadata, written by the service only: secured properties can be set under an
+      administrator or system login, not by a user who merely has Write on the document. Otherwise
+      such a user could blank imgh:bands and hide a picture from detection for good, or forge a hash.
+    -->
+    <property schema="imagehash" name="phash" secured="true" />
+    <property schema="imagehash" name="bands" secured="true" />
+    <property schema="imagehash" name="signature" secured="true" />
   </extension>
 
   <extension target="org.nuxeo.ecm.core.schema.TypeService" point="doctype">

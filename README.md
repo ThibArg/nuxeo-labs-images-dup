@@ -36,6 +36,8 @@ The first three fall back to the [configuration](#configuration), so the usual w
 
 To compute or refresh hashes for existing documents, submit the `computeImageHash` bulk action with a query selecting Picture documents. Set its optional `force` parameter to `true` to recompute hashes that already use the current configuration.
 
+The hash is stored in three properties of the `ImageHash` facet, `imgh:phash`, `imgh:bands` and `imgh:signature`. They are declared `secured`: only administrators and the system can write them, so a user who can edit a picture cannot blank or forge its hash to hide it from detection. Custom code calling `ImageHashService.updateHash` must therefore run under an administrator or system login.
+
 ### Web UI
 
 With Web UI, documents with the Picture facet get a **Similar Images** tab. Web UI is only an optional dependency of the package: without it, everything else works the same.

@@ -93,6 +93,9 @@ public interface ImageHashService {
 
     /**
      * Computes the hash of the document and saves it if it changed. Does not search for duplicates.
+     * <p>
+     * The hash properties are secured: the calling thread must be logged in as an administrator or as the system
+     * user, whatever the principal of the session.
      *
      * @param force if {@code false}, documents already hashed with the current signature are skipped
      * @return {@code true} if the document was saved
@@ -106,6 +109,9 @@ public interface ImageHashService {
      * <p>
      * Duplicate detection requires a search engine client (OpenSearch or Elasticsearch). When the repository client
      * is the one configured, the hash is still stored and the detection is skipped.
+     * <p>
+     * The hash properties are secured: the calling thread must be logged in as an administrator or as the system
+     * user, whatever the principal of the session.
      *
      * @since 2025.1.0
      */
