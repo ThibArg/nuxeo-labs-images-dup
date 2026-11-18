@@ -1,9 +1,13 @@
 # nuxeo-labs-images-dup
 
-> [!CAUTION]
-> This is **work in progress**. Do not use as is.
+> [!IMPORTANT]
+> This plugin is obsolete before being released :-): Finding duplicated images using a perceptive hash was a good idea a 3-4 years ago, when it first started, but at the area of AI the easiets and most efficient way looks like using a vector index and OpenSearch (likely 3.n). Which would also allows for semantic search by the way.
 >
-> Once ready this plugin should be forked to the [nuxeo-sandbox](https://github.com/nuxeo-sandbox) organization, and the current repository will be archived.
+> The point is: Nuxeo is already working on seach index (also used by agents via the Nuxeo MCP Server), so it is useless to continue here, even if with the help of Claude Opus 5.5, the revival of the plugin was amazing :-D
+>
+> It will stay here as a good memory!
+
+<hr>
 
 - A Nuxeo LTS 2025 plugin that **detects near-duplicate images** on documents with the `Picture` facet.
 
