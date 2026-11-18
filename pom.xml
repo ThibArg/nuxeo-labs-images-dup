@@ -9,7 +9,7 @@
 
   <groupId>nuxeo.labs.images.dup</groupId>
   <artifactId>nuxeo-labs-images-dup-parent</artifactId>
-  <version>2025.1.0</version>
+  <version>2025.2.0-SNAPSHOT</version>
   <name>Nuxeo Labs Images Duplicates</name>
   <description>Detects near-duplicate images (Picture facet) using a perceptual hash (pHash) searchable with NXQL</description>
   <packaging>pom</packaging>

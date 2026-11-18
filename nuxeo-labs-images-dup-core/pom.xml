@@ -4,7 +4,7 @@
   <parent>
     <groupId>nuxeo.labs.images.dup</groupId>
     <artifactId>nuxeo-labs-images-dup-parent</artifactId>
-    <version>2025.1.0</version>
+    <version>2025.2.0-SNAPSHOT</version>
   </parent>
   <artifactId>nuxeo-labs-images-dup-core</artifactId>
   <name>Nuxeo Labs Images Duplicates - Core</name>
