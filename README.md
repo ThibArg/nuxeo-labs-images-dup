@@ -54,7 +54,9 @@ The operation sets the `imageHashTruncated` context variable: `true` when the re
 
 **A search starts from the stored hashes**, those of the 8 orientations included, so it reads no image. Only a picture that is not hashed yet, or hashed by an earlier version of the algorithm, has its view fetched and decoded for the search.
 
-**`maxResults` does not make the search faster.** The candidate query and the distance comparison always run on the whole candidate set, then the results are sorted by distance and only then truncated. So `maxResults` only reduces the number of documents loaded from the repository and the size of the response. What drives the search cost is `radius` and `orientations`, which multiplies the number of queried keys by 8. The hard limit on the candidate set is `maxCandidates`, see [Candidate Limit](#candidate-limit).
+**Orientations matter for phone photos.** A perceptual hash is not rotation invariant: a copy rotated by 90 degrees is as far from the original as an unrelated image, so only a search with `orientations` finds it. A common case produces such copies without anyone rotating anything: cameras and phones often store the pixels as the sensor captured them, with an EXIF tag telling viewers how to rotate them, and Nuxeo generates the picture views, and the plugin hashes them, without applying that tag. The same photo saved upright by an editor is then a rotation of it. Checked on an OpenSearch 2 deployment: a JPEG tagged with EXIF orientation 6 and the same image rotated in its pixels got hashes 34 bits apart, and only the search with orientations paired them, at a distance of 0. The automatic detection and the `detectImageDuplicates` bulk action do not compare orientations by default (`detectionOrientations`): set it to `true` to report such pairs. With the [distance hint](#candidate-limit), it costs 84 ms instead of 20 ms per search at 10 million pictures.
+
+**`maxResults` does not make the search faster.** The candidate query and the distance comparison always run on the whole candidate set, then the results are sorted by distance and only then truncated. So `maxResults` only reduces the number of documents loaded from the repository and the size of the response. What drives the search cost is `radius` and `orientations`, which multiplies the number of queried keys by 8. See [Candidate Limit](#candidate-limit) for what the number of candidates costs, and for `maxCandidates`.
 
 **Duplicates arriving together are not detected on the spot.** The automatic detection searches the search index, and a picture enters it a moment after its hash is stored. Two copies hashed within that delay of each other, typically the same file uploaded twice in one import, do not see each other and no event is fired for either. The delay is the indexing latency: seconds on an idle platform, more during a mass import. The `detectImageDuplicates` bulk action is the second pass that catches them, see below.
 
@@ -79,7 +81,7 @@ The hash is stored in four properties of the `ImageHash` facet: `imgh:phash`, `i
 
 Storing the hash is a second save of the picture, after the one of its views. It creates no version, does not change the modification date or the last contributor, writes no audit entry and sends no notification. Two things cannot be avoided, though: the picture is indexed a second time in the search engine, and the save fires `beforeDocumentModification` and `documentModified` like any other, so event handlers on document modification, Studio ones included, run once more per picture, as the system user.
 
-A picture that cannot be hashed does not stop the others. A view that cannot be decoded is logged and the next configured view is tried; a picture with no readable view is left without a hash. In the bulk action, a picture whose hash cannot be saved is logged and counted in the `errorCount` of the command status, and the rest of its batch is still processed.
+A picture that cannot be hashed does not stop the others. A view that cannot be decoded is logged and the next configured view is tried; a picture with none of the configured views readable is left without a hash, and a warning is logged, see [Picture Views Used for Hashing](#picture-views-used-for-hashing). In the bulk action, a picture whose hash cannot be saved is logged and counted in the `errorCount` of the command status, and the rest of its batch is still processed.
 
 ### Web UI
 
@@ -139,16 +141,32 @@ Contribute to the `configuration` extension point of `nuxeo.labs.images.dup.Imag
 
 `detectionEnabled` set to `false` switches the automatic detection off: pictures are still hashed after their views generation, but no search runs and no `duplicatedImage` event is fired. This is meant for a mass import, where the automatic detection costs one search per picture on a search cluster busy indexing, and misses the copies imported together anyway. The recipe is: import with `detectionEnabled` at `false`, wait for the indexing to catch up, then run the `detectImageDuplicates` bulk action on the imported pictures. The explicit search and that bulk action ignore this setting.
 
-The first available view of the list is used for hashing. A perceptual hash does not depend on the size of the image it is computed from, so pictures hashed from different views are compared with each other, and changing `views` does not invalidate the hashes already stored.
+The first readable view of the list is used for hashing, see [Picture Views Used for Hashing](#picture-views-used-for-hashing).
 
 Each hash is stored with a signature, the version of the algorithm that computed it, currently `phash64v2`. Hashes stored with another signature are never compared: they are ignored by every search until they are recomputed. So after upgrading from a build that stored hashes with another signature, `phash64v1/Small` for example, run the `computeImageHash` bulk action on all the pictures; `force` is not needed, a hash with an outdated signature is always recomputed. Until then, the pictures hashed before the upgrade are not found as duplicates.
 
-Two settings live in `nuxeo.conf` rather than in the extension point, because the template installed by the Marketplace package needs them before the platform starts:
+Three settings live in `nuxeo.conf` rather than in the extension point, because the template installed by the Marketplace package needs them before the platform starts:
 
 | Property | Default | Role |
 |---|---|---|
 | `nuxeo.labs.images.dup.fulltext.repository` | `default` | Repository the fulltext exclusion is contributed to. **Must be changed if your repository is not named `default`**, see [Keeping the Hash Properties Out of Fulltext](#keeping-the-hash-properties-out-of-fulltext) |
 | `nuxeo.labs.images.dup.fulltext.exclude` | `true` | Set to `false` to not contribute the exclusion at all |
+| `nuxeo.labs.images.dup.search.hint` | `true` | Set to `false` to search with the band query alone, without letting the search engine compute the distance, see [Candidate Limit](#candidate-limit) |
+
+### Picture Views Used for Hashing
+
+The plugin does not hash `file:content`: it hashes one of the picture views Nuxeo generates from it, the first one of `views` that the picture has and that can be decoded. Views are looked up by name, the `id` of the `pictureConversion` that generates them, never by size.
+
+**Keep `Small` first, as by default.** Hashing reduces the image to 32x32 levels of gray, so a larger view brings nothing but decoding time: the JPEG decoder processes every pixel of the view, 12 times more for `FullHD` than for `Small` and about 100 times more for a 24-megapixel `OriginalJpeg`, before the plugin keeps a fraction of them. Too small is not good either: on a view much below 256 pixels, such as `Thumbnail`, compression artifacts are as large as the 32x32 cells and can flip bits. The plugin reads views at about 256 pixels on their smaller side.
+
+**If `Small` is overridden or not generated**, put first in `views` a view whose smaller side is between 256 and 512 pixels. Two things to know when you contribute `views`:
+
+- **The list replaces the default one**, it is not added to it: list every view you want, in order of preference.
+- **A picture with none of the listed views is not hashed.** It is never found as a duplicate, and a warning naming the configured views is logged for it.
+
+A view dedicated to the plugin is possible, a `pictureConversion` of your own listed first in `views`, but it does not make anything faster: Nuxeo computes every view from the original, so one more view costs one more decoding of the original by ImageMagick, far more than the plugin saves. It is only worth it to change what the hash sees, for instance with an ImageMagick command applying `-auto-orient` (see the EXIF note in [How to Use](#how-to-use)).
+
+The same image hashed from two views of different sizes gets hashes a few bits apart, which uses part of the threshold. Hashes computed before a change of `views` stay valid and are still compared, but to hash every picture the same way again, run the `computeImageHash` bulk action with `force` set to `true`.
 
 ### Search Backend
 
@@ -157,45 +175,63 @@ Similar images are found by querying the `imgh:bands` property through the Searc
 | Search stack | Package | Status |
 |---|---|---|
 | OpenSearch 1.x, Elasticsearch 7.x–8.x | `nuxeo-search-client-opensearch1` | Supported, covered by automated tests |
-| OpenSearch 2.x | `nuxeo-search-client-opensearch2` | Supported, **not covered by automated tests** |
-| Elasticsearch 9.x | `nuxeo-search-client-elasticsearch9` | Supported, **not covered by automated tests** |
+| OpenSearch 2.x | `nuxeo-search-client-opensearch2` | Supported, **not covered by automated tests**, checked manually on OpenSearch 2.19 |
+| Elasticsearch 9.x | `nuxeo-search-client-elasticsearch9` | Supported, **not covered by automated tests**, never run |
 
 `nuxeo-search-client-opensearch1` and `nuxeo-search-client-opensearch2` are mutually exclusive. MongoDB Atlas Search (`nuxeo-search-client-mongoatlas`) is **not supported**: it has not been tested and its indexing model differs.
 
+On these three stacks, the search engine also computes the distance between the hashes, through an NXQL hint the Marketplace template registers for the installed search client, see [Candidate Limit](#candidate-limit). The hint runs a Painless script: Painless is part of every OpenSearch and Elasticsearch distribution, but a cluster that disables scripting cannot serve it, and every duplicate search then fails. Set `nuxeo.labs.images.dup.search.hint=false` in `nuxeo.conf` on such a cluster.
+
 > [!IMPORTANT]
-> Only OpenSearch 1.x, and therefore Elasticsearch 7.x–8.x which uses the same client, is exercised by the test suite. It runs against an embedded OpenSearch node.
+> Only OpenSearch 1.x, and therefore Elasticsearch 7.x–8.x which uses the same client, is exercised by the test suite. It runs against an embedded OpenSearch node, given the Painless module for the distance hint.
 >
-> OpenSearch 2.x and Elasticsearch 9.x are supported by design: the plugin resolves the search index from the configuration rather than from a client name, and the fulltext mapping template ships a dedicated block for each stack, written from the official sources of each client. But no automated test runs against them, so validate on a staging environment before relying on them in production.
+> OpenSearch 2.x and Elasticsearch 9.x are supported by design: the plugin resolves the search index from the configuration rather than from a client name, the fulltext mapping template ships a dedicated block for each stack, written from the official sources of each client, and the distance hint sends the same query on the three stacks, in a `wrapper` query. OpenSearch 2.x was checked manually, Elasticsearch 9.x never ran: validate on a staging environment before relying on them in production.
 >
 > This is a deliberate trade-off. Those two search clients are distributed as private snapshot artifacts, and Elasticsearch 9 has no embeddable server. Testing them would make `mvn clean install` require a Docker container, on top of the Nuxeo credentials it already needs.
 
-To check a deployment manually, index a picture, then run a fulltext search on one of the values of its `imgh:bands` property, for example `f2eabf4f:0:cb94`, on its `imgh:phash` value, and on its `imgh:signature` value, `phash64v2`. None must return the picture: otherwise the mapping template was not applied and the hash properties are polluting the fulltext index. This is exactly what the automated tests assert on OpenSearch 1.x.
+To check a deployment manually, index a picture, then run a fulltext search on one of the values of its `imgh:bands` property, for example `f2eabf4f:0:cb94`, on its `imgh:phash` value, and on its `imgh:signature` value, `phash64v2`. None must return the picture: otherwise the mapping template was not applied and the hash properties are polluting the fulltext index. This is exactly what the automated tests assert on OpenSearch 1.x. Also check that `nxserver/config/imagehash-search-hint-config.xml` registers the hint for your search client: with no search engine detected, it is an empty component.
+
+> [!WARNING]
+> **The mapping is only applied when the index is created.** An index created before the package was installed has no `imgh:*` mapping, and the hash properties end up in the fulltext field. This happens with a Docker image that starts Nuxeo once before installing its packages. Recreate the index with a full reindex, `POST /nuxeo/api/v1/management/search/reindex` **without** a `query` parameter, as an administrator: only that form drops and recreates the index. A reindex with a query rewrites the documents into the existing index, which keeps its old mapping.
 
 The query always targets the search index, never the repository, so no MongoDB or PostgreSQL index is needed. Without a search engine client, hashes are still computed and stored, but duplicate detection is disabled and `ImageHash.FindSimilar` fails with an explicit error.
 
 The index actually queried is the one declared as default for the repository, so a blue/green reindex keeps working: the plugin follows the blue index until you swap.
 
-`maxCandidates` must not exceed the index `max_result_window`, which defaults to 10000. The plugin default is exactly 10000, so lower it if you lower the window: above the window, the search engine rejects every candidate query.
+`maxCandidates` must not exceed the index `max_result_window`, which defaults to 10000. The plugin default is exactly 10000, so lower it if you lower the window: above the window, the search engine rejects every duplicate search.
 
 When the duplicate search fails during the automatic detection, because of such a rejection or because the search cluster is unavailable, the hash is still stored and the failure is logged as an error, but the `duplicatedImage` event is not fired for that picture and the detection is not replayed later.
 
 ### Candidate Limit
 
-A search examines at most `maxCandidates` documents, 10000 by default. The number of candidates grows with the repository: each queried key matches about one hashed picture out of 65536, so a search fetches around `keys * pictures / 65536` candidates, and more on real photos, whose hashes are less evenly spread than this estimate assumes.
+A search first selects the candidates, the documents sharing a band key with the image (see **Search radius** above). Each queried key matches about one hashed picture out of 65536, so the number of candidates grows with the repository, around `keys * pictures / 65536`. It is the best case: measured with uniformly random hashes, the counts match that estimate within 3%, and real photos, whose hashes are less evenly spread, give more.
+
+**With the distance hint, the default**, the search engine compares the hash of every candidate with the image and returns only the documents within `threshold`. Nothing is fetched for the other candidates, and `maxCandidates`, 10000 by default, caps the number of matches, which only an image with thousands of near copies reaches. The hint is registered by the Marketplace template for OpenSearch 1.x and 2.x and Elasticsearch 7.x to 9.x, see [Search Backend](#search-backend). Measured through Nuxeo on a single OpenSearch 2.19 node with 4 GB of heap, 10 million hashed pictures, one search at a time, as an administrator:
+
+| Search | Keys | Candidates at 10 million | Median latency | Complete |
+|---|---|---|---|---|
+| Automatic detection, radius 1 | 68 | 10 350 | 20 ms | yes |
+| Tab and operation defaults, radius 1 with orientations | 544 | 82 700 | 84 ms | yes |
+| Radius 2 | 548 | 83 300 | 81 ms | yes |
+| Radius 2 with orientations | 4384 | 649 000 | 454 ms | yes |
+
+A user who is not an administrator, whose searches carry the permission filter, measured within 3 ms of these figures.
+
+**Without the distance hint**, on another search stack or with `nuxeo.labs.images.dup.search.hint=false`, the band query alone runs: Nuxeo fetches up to `maxCandidates` candidates and compares the hashes itself. Each fetched candidate costs about 25 microseconds, and the limit is reached around (measured with uniform hashes, so later than with real photos):
 
 | Search | Keys | Limit of 10000 reached around |
 |---|---|---|
-| Automatic detection, radius 1 | 68 | 9.6 million pictures |
+| Automatic detection, radius 1 | 68 | 9.7 million pictures |
 | Tab and operation defaults, radius 1 with orientations | 544 | 1.2 million pictures |
 | Radius 2 | 548 | 1.2 million pictures |
 | Radius 2 with orientations | 4384 | 150000 pictures |
 
-Beyond the limit the result is **truncated**: some similar images may be missing. The plugin then does two things.
+Beyond the limit, whether it counts candidates or matches, the result is **truncated**: some similar images may be missing. The plugin then does two things.
 
 - It says so. The operation sets the `imageHashTruncated` context variable, the page provider flags each returned document through the `imageSimilarity` enricher, the tab displays a warning, the `duplicatedImage` event carries `duplicatesTruncated`, and a warning is logged.
-- It chooses what is dropped. The candidates are fetched again from the closest keys outwards: first the documents sharing an exact band with the hash, then the 1-bit variants, then the 2-bit ones, each with what is left of the limit. So every image within a distance of 3 is still found as long as the exact bands alone fit in the limit, and the candidates dropped are the least likely duplicates. This costs up to three more queries, only for the searches that reach the limit.
+- It chooses what is dropped. The documents are fetched again from the closest keys outwards: first those sharing an exact band with the hash, then the 1-bit variants, then the 2-bit ones, each with what is left of the limit. So every image within a distance of 3 is still found as long as the exact bands alone fit in the limit, and the documents dropped are the least likely duplicates. This costs up to three more queries, only for the searches that reach the limit.
 
-To get complete results on a large repository, lower `radius` or turn `orientations` off, which divides the number of keys by 8. Raising `maxCandidates` is only possible up to the index `max_result_window`.
+Without the hint, a truncated search took about 500 ms through Nuxeo on the same server, and missed real duplicates: at 5 million pictures, the default tab search lost copies at distances 5 to 7 that the search with the hint returned. To get complete results on a large repository without the hint, lower `radius` or turn `orientations` off, which divides the number of keys by 8. Raising `maxCandidates` is only possible up to the index `max_result_window`.
 
 ### Keeping the Hash Properties Out of Fulltext
 

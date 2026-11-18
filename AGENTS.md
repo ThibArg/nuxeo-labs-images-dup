@@ -11,7 +11,8 @@ Nuxeo LTS 2025 plugin. Detects near-duplicate images on `Picture`-faceted docume
 - Everything written (README, this file, code comments, Javadoc, commit messages, UI labels) is in
   **English**. The one exception is the French Web UI translation, `messages-fr.json`.
 - `AGENTS.md` is deliberately **not** in `.gitignore` here, it is committed.
-- Javadoc tag is `@since 2025.1.0` everywhere, not `@since 2025.XX`.
+- Javadoc tag is `@since 2025.1.0` on the API of the first release and `@since 2025.2.0` on what was added
+  since (the distance hint), never `@since 2025.XX`.
 - No CI, no linter, no formatter config. Java 21, Maven 3.8. `.github/modernize/` is a self-ignored
   VS Code tool artifact, not CI.
 
@@ -19,10 +20,15 @@ Nuxeo LTS 2025 plugin. Detects near-duplicate images on `Picture`-faceted docume
 
 | Module | Content |
 |---|---|
-| `nuxeo-labs-images-dup-core` | All Java code, schema, OSGI-INF contributions, Web UI files, tests |
+| `nuxeo-labs-images-dup-core` | All Java code but two classes, schema, OSGI-INF contributions, Web UI files, tests, and the OpenSearch 1 distance hint |
+| `nuxeo-labs-images-dup-opensearch2` | One class, the distance hint builder for the OpenSearch 2 client, compiled against it (`provided`) |
+| `nuxeo-labs-images-dup-elasticsearch9` | Same for the Elasticsearch 9 client |
 | `nuxeo-labs-images-dup-package` | Marketplace assembly (`assembly.xml`) + the `nuxeo-labs-images-dup` configuration template, no code |
 
-Bundle symbolic name used in `@Deploy`: `nuxeo.labs.images.dup.nuxeo-labs-images-dup-core`.
+Bundle symbolic name used in `@Deploy`: `nuxeo.labs.images.dup.nuxeo-labs-images-dup-core`. The two stack
+modules are bundles too (`MANIFEST.MF`, no `Nuxeo-Component`): they only carry a class, which the template
+registers. They exist so that those clients never reach the classpath of the core module, see
+"Distance hint".
 
 Everything funnels into `ImageHashServiceImpl`:
 
@@ -37,15 +43,15 @@ Everything funnels into `ImageHashServiceImpl`:
 ## Commands
 
 ```bash
-mvn clean install                                        # build + all tests + marketplace zip (~55 s warm)
+mvn clean install                                        # build + all tests + marketplace zip (~70 s warm)
 mvn -o clean install                                     # same, offline, once dependencies are cached
 mvn -pl nuxeo-labs-images-dup-core test                  # tests only
 mvn -pl nuxeo-labs-images-dup-core test -Dtest=TestPHash
 mvn -pl nuxeo-labs-images-dup-core test -Dtest='TestPHash#testOrientations'
 ```
 
-- `TestPHash` and `TestHashBands` are plain unit tests (< 1 s). `TestImageHashService` boots Nuxeo plus an
-  embedded OpenSearch node (~45 s), `TestFulltextExclusion` ~5 s.
+- `TestPHash`, `TestHashBands` and `TestHashDistanceHint` are plain unit tests (< 1 s). `TestImageHashService`
+  boots Nuxeo plus an embedded OpenSearch node with the Painless module (~57 s), `TestFulltextExclusion` ~3 s.
 - `ERROR ... NUXEO INSTANCE REGISTRATION FILE IS MISSING` in the test output is harmless.
 - **The build needs Nuxeo credentials**, a `<server>` with id `maven-private` in `~/.m2/settings.xml`.
   Verified (review finding L8): with an empty local repository and empty settings, Maven stops on
@@ -55,7 +61,13 @@ mvn -pl nuxeo-labs-images-dup-core test -Dtest='TestPHash#testOrientations'
   has built once with credentials.
 - Run `mvn clean install` before committing Java/XML changes (not needed for README / AGENTS.md /
   `.gitignore`-only commits).
-- Package artifact: `nuxeo-labs-images-dup-package/target/nuxeo-labs-images-dup-package-2025.1.0.zip`.
+- Package artifact: `nuxeo-labs-images-dup-package/target/nuxeo-labs-images-dup-package-<version>.zip`. It
+  ships the three jars and the template.
+- The OpenSearch 2 and Elasticsearch 9 modules compile against `org.nuxeo.opensearch2:nuxeo-search-client-opensearch2`
+  and `org.nuxeo.elasticsearch9:nuxeo-search-client-elasticsearch9`, separate packages not managed by
+  `nuxeo-parent`: their versions are root POM properties. Both resolve from the Nuxeo repositories with the same
+  credentials. Their sources are private repositories (branch `lts-2025`); the user has local clones next to
+  the Nuxeo sources, ask for the location rather than writing it here.
 
 ## Search backend: a search engine is required
 
@@ -89,6 +101,8 @@ Cross-checked against the opensearch1 sources plus the private `nuxeo-opensearch
 | Runtime component | `org.nuxeo.runtime.opensearch1.OpenSearchComponent` | `org.nuxeo.runtime.opensearch2.OpenSearchComponent` | `org.nuxeo.runtime.elasticsearch9.ElasticsearchComponent` |
 | Config component | `...search.client.opensearch1.contrib` | `...opensearch2.contrib` | `...elasticsearch9.contrib` |
 | Property namespace | `nuxeo.search.client.default.opensearch1.*` | `...opensearch2.*` | `...elasticsearch9.*` |
+| Hint extension point (target) | `org.nuxeo.ecm.core.search.client.opensearch1` | `...client.opensearch2` | `...client.elasticsearch9` |
+| Hint builder interface | `OpenSearchHintQueryBuilder` (OpenSearch 1 `QueryBuilder`) | `OpenSearchHintQueryBuilder` (opensearch-java `Query.Builder`) | `ElasticsearchHintQueryBuilder` (elasticsearch-java `Query.Builder`) |
 
 - opensearch1 and opensearch2 declare `<conflicts>` on each other, which is why they can share the
   client name `opensearch`.
@@ -98,6 +112,49 @@ Cross-checked against the opensearch1 sources plus the private `nuxeo-opensearch
   addon packages. `package.xml` declares **no** dependency on purpose: the format has no OR and any of
   the three satisfies the plugin.
 - `maxCandidates` default (10000) sits exactly on the `max_result_window` default.
+
+## Distance hint: the search engine computes the Hamming distance
+
+The load test (report `05-load-test.md`, kept outside the repository, ask the user) measured
+the band query alone on 10 million synthetic documents (OpenSearch 2.19, one node). Candidate counts
+match `keys * N / 65536` within 3% on uniform hashes, and **the cost is the fetch**, about 21 us per
+candidate read from `_source`, not the match. Past `maxCandidates` the default tab search lost real
+duplicates (distance 5 to 7). Scrolling every candidate (rejected fix 1) took 1.8 s at 10M for the tab
+setting. So the fix lets the engine filter on the distance.
+
+- **`HashDistanceHint`** (core, no client dependency) owns the hint: the NXQL clause
+  `/*+ES: OPERATOR(imagehash_distance) */ imgh:bands IN ('threshold:8', 'hash:<hex>', ..., '<band key>', ...)`,
+  its validation, and the query JSON: a `terms` filter on the band keys (the pre-filter, keep it: brute
+  force took 295 ms at 10M for one hash) **and** a Painless `script` filter. The JSON is written once and
+  given to every client as a **`wrapper` query** (base64), so the three builders are three lines each.
+- **The search keeps going through `SearchService` with the user's principal**: the NXQL transformer adds the
+  ACL filter around the hint (`OpenSearchQueryTransformer.java:271-273`). A user measured within 3 ms of
+  Administrator. Do not replace it with a native query plus a second permission query.
+- **The hint can be written by anyone in any NXQL query**: `decode()` validates everything before it reaches
+  the JSON (field must be `imgh:bands`, band keys and hex hashes by regex, threshold 0-64, sizes capped).
+  `testDistanceHintValuesAreValidated` covers it. Keep the JSON built only from validated values.
+- **The script reads `imgh:phash` (keyword doc value) and parses the hex by hand.** No schema change, no
+  signature bump, no recompute. Measured against a `long` doc value at 10M: 15 vs 8 ms (radius 1), 80 vs 35
+  ms (radius 1 + orientations), 470 vs 106 ms (radius 2 + orientations), always identical results.
+  `Long.parseUnsignedLong` works in Painless and costs the same. If radius 2 with orientations ever matters,
+  the `long` property is the next step (`ALGORITHM` bump, `computeImageHash` on everything).
+- **Registered by `imagehash-search-hint-config.xml.nxftl`**, one block per stack, guarded by the same
+  index name properties as the mapping template (blue or green). **No `<require>`**: hint builders are read
+  when the search client factory starts, after every registration. The template also contributes the
+  `ConfigurationService` property `nuxeo.labs.images.dup.search.distanceHint=true`, only when it emits at least
+  one block; `nuxeo.labs.images.dup.search.hint=false` in `nuxeo.conf` emits nothing. Rendering was verified
+  with `TextTemplate` over ten property sets (none, each stack, OS1+ES9, blue+green, green only, empty index
+  name, hint=false, hint property absent).
+- **Fallback**: `ImageHashServiceImpl.isDistanceHintEnabled` reads that property. Without it, the search is
+  the band query alone with the tiered re-query, and a WARN is logged once. A stack without the hint
+  (MongoDB Atlas) therefore never sends an unknown operator. A cluster with scripting disabled fails every
+  search: the README tells to set the property to false.
+- With the hint, `maxCandidates` caps the **matches**; the tiered re-query and every truncation flag still
+  apply, the WARN says "matches" instead of "candidates".
+- **Verified on OpenSearch 2.19 (manual, 10M synthetic + 220 real references)**: the 10 planted near
+  duplicates came back exactly as expected for the 6 settings, where the band query alone missed some at
+  5M and 10M; latency through Nuxeo 20 ms (detection), 84 ms (tab), 454 ms (radius 2 + orientations), no
+  truncation. **Elasticsearch 9 never ran**; its builder only compiled.
 
 ## Fulltext: two independent layers, both fixed here
 
@@ -245,6 +302,18 @@ paths.
 - Required test-jars, both version-managed by the Nuxeo parent:
   `org.nuxeo.ecm.core:nuxeo-search-client-opensearch1` and
   `org.nuxeo.runtime:nuxeo-runtime-opensearch1-embed`.
+- **The embedded node has no Painless by default** (it loads `Netty4Plugin` and `CommonAnalysisPlugin`
+  only), and the distance hint needs it. `test-opensearch-painless-contrib.xml` gives the embedded server a
+  `homePath` holding `modules/lang-painless`, filled by `maven-dependency-plugin` (lang-painless,
+  painless-spi, antlr4-runtime 4.5.3; ASM is already on the classpath) with a filtered
+  `plugin-descriptor.properties`. Loading a module needs `opensearch-plugin-classloader` (test dependency)
+  and passes the node's **jar hell** check, which the Nuxeo test classpath fails on four jar pairs:
+  surefire's `classpathDependencyExcludes` drops one jar of each, chosen so the loaded classes do not
+  change. If a Nuxeo upgrade adds a pair, the class fails at startup with "jar hell!": add the later jar
+  of the pair to the excludes.
+- `TestImageHashService` runs **with the hint** (`test-search-hint-contrib.xml`, the hand-written
+  counterpart of the OpenSearch 1 branch of the template, keep them identical). The candidate-cap test
+  deploys `test-search-hint-disabled-contrib.xml` on the method to exercise the fallback.
 - The technical index is `nxutest` in tests, hence the separate
   `test-opensearch-mapping-contrib.xml`, which must be `@Deploy`ed explicitly.
 - `testBandKeysAreNotIndexedInFulltext` and `testHashAndSignatureAreNotIndexedInFulltext` are the
@@ -274,7 +343,12 @@ paths.
   the method (`maxCandidates` 5) and builds its candidates with `createHashed`, which writes the three
   `imgh:*` properties directly on `File` documents: 16 decoys one bit away on band 0 and inverted
   elsewhere, indexed **before** the real duplicate so that an unsorted capped query leaves it out. It
-  **did fail** (empty result) before the tiered re-query.
+  **did fail** (empty result) before the tiered re-query. It also deploys
+  `test-search-hint-disabled-contrib.xml`: with the hint, the decoys are not matches and nothing is cut.
+  `testDistanceHintReturnsOnlyTheMatches` is the same setup with the hint: the decoys and a copy 9 bits
+  away are left out by the engine, the copy 7 bits away is kept, and the result is not truncated.
+- `testOnlyTheConfiguredViewsAreHashed` (`test-custom-view-contrib.xml`) pins that `<views>` replaces the
+  default list: a picture with only `Small` is not hashed when the list holds a custom view alone.
 - The two `testFailingSearch*` tests deploy `test-failing-search-contrib.xml` **on the method**
   (`maxCandidates` 20000, above the `max_result_window` of the embedded index, so every candidate query is
   rejected). The hot deploy costs about 3 s per test and is undone afterwards: `testHashPropertiesAreSecured`
@@ -338,6 +412,11 @@ paths.
   smaller side to `READ_SIZE` (review finding L5). It only changes the step, so the hash, of images more
   elongated than about 8:1, and can turn a strip less than 32 px wide once decoded into a degenerate
   image. No `ALGORITHM` bump: `phash64v2` has not been deployed anywhere. Bump it if this changes again.
+- **No readable configured view is a WARN** (`readImage`, after the loop): it names the configured views,
+  because a picture whose views are all outside `<views>` (a deployment generating only its own
+  conversion) is otherwise never hashed and never reported. Pictures without the `Picture` facet stay at
+  DEBUG. Views are looked up by **name** (`MultiviewPictureAdapter.getView`), never by size, and a
+  `<views>` contribution replaces the default list (`ImageHashConfigurationDescriptor.merge`).
 - **Degenerate images** (smaller side < 32 px, or reduced-luminance stddev < 2.0) get a hash stored but
   an **empty** `imgh:bands`, so they are never candidates. Otherwise blank images and icons match
   everything.
@@ -414,7 +493,9 @@ paths.
   (`fetchCandidates`). Below the cap nothing changes: one query. `hits < limit` is the completeness
   test on purpose, not `getTotal()`: totals stop being accurate at 10000 on the engines. Tiers are not
   made disjoint with a `NOT IN`: a document can come back in a later tier, it is deduplicated by id and
-  only wastes a little of that tier's limit.
+  only wastes a little of that tier's limit. With the distance hint the same logic runs on
+  matches (`Fetched` carries the hint parameters to every tier); a tier whose keys were all queried by
+  the previous ones is skipped, the hint rejects an empty key list.
 - `SearchQuery` default limit is 10 — always set `.limit(...)` explicitly.
 - `PICTURE_VIEWS_GENERATION_DONE_EVENT` is imported from the nested
   `RecomputeViewsAction.RecomputeViewsComputation`, not from the deprecated `PictureViewsGenerationWork`.
