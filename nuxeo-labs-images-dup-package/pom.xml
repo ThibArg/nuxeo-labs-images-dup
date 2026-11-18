@@ -25,6 +25,15 @@
       <groupId>nuxeo.labs.images.dup</groupId>
       <artifactId>nuxeo-labs-images-dup-core</artifactId>
     </dependency>
+    <!-- Inert unless the template registers them, for the search client actually installed -->
+    <dependency>
+      <groupId>nuxeo.labs.images.dup</groupId>
+      <artifactId>nuxeo-labs-images-dup-opensearch2</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>nuxeo.labs.images.dup</groupId>
+      <artifactId>nuxeo-labs-images-dup-elasticsearch9</artifactId>
+    </dependency>
   </dependencies>
 
   <build>

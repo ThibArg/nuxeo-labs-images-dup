@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.test.search.hint">
+
+  <!--
+    Test counterpart of the OpenSearch 1 branch of the marketplace template
+    (imagehash-search-hint-config.xml.nxftl): keep it identical.
+  -->
+  <extension target="org.nuxeo.ecm.core.search.client.opensearch1" point="hint">
+    <hint name="imagehash_distance" class="nuxeo.labs.images.dup.opensearch1.HashDistanceHintQueryBuilder" />
+  </extension>
+
+  <extension target="org.nuxeo.runtime.ConfigurationService" point="configuration">
+    <property name="nuxeo.labs.images.dup.search.distanceHint">true</property>
+  </extension>
+
+</component>

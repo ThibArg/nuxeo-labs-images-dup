@@ -1,0 +1,8 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: nuxeo-labs-images-dup-elasticsearch9
+Bundle-SymbolicName: nuxeo.labs.images.dup.nuxeo-labs-images-dup-elasticsearch9;singleton=true
+Bundle-Vendor: nuxeo.labs.images.dup
+Bundle-Version: 2025.2.0
+Bundle-ActivationPolicy: lazy
+Bundle-ClassPath: .

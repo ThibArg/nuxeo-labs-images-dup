@@ -1,0 +1,58 @@
+<#escape x as x?xml>
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.search.hint">
+
+  <!--
+    Lets the search engine compute the Hamming distance between image hashes. Without this, a
+    duplicate search fetches every document sharing a band key with the image, at most
+    maxCandidates of them, and compares the hashes in Nuxeo: on a large repository the candidates
+    exceed that limit and the result is incomplete. With it, the same band query is completed by a
+    Painless script filter, and the engine returns only the documents within the threshold.
+
+    The NXQL hint operator imagehash_distance is registered on the search client of each installed
+    stack. Each guard is the index name property of that stack, like the search mapping template:
+    a stack that is not installed emits nothing, so its hint class, compiled against its client, is
+    never loaded. The blue and green indexes of a stack share one search client component, hence a
+    single registration per stack. No <require>: hint builders are read when the search client
+    starts, after every contribution is registered, so the order does not matter.
+
+    The configuration property tells the plugin that a hint is registered. It is emitted only if at
+    least one stack is, so a stack without the hint, MongoDB Atlas Search for instance, keeps the
+    band query alone instead of failing on an unknown operator.
+
+    Set nuxeo.labs.images.dup.search.hint=false in nuxeo.conf to go back to the band query alone.
+  -->
+
+<#assign hintEnabled = ((nuxeo.labs.images.dup.search.hint)!"true") == "true">
+<#assign opensearch1 = hintEnabled && (((nuxeo.search.client.default.opensearch1.index.name)!)?has_content
+  || ((nuxeo.search.client.green.opensearch1.index.name)!)?has_content)>
+<#assign opensearch2 = hintEnabled && (((nuxeo.search.client.default.opensearch2.index.name)!)?has_content
+  || ((nuxeo.search.client.green.opensearch2.index.name)!)?has_content)>
+<#assign elasticsearch9 = hintEnabled && (((nuxeo.search.client.default.elasticsearch9.index.name)!)?has_content
+  || ((nuxeo.search.client.green.elasticsearch9.index.name)!)?has_content)>
+<#if opensearch1>
+  <!-- OpenSearch 1.x, Elasticsearch 7.x-8.x -->
+  <extension target="org.nuxeo.ecm.core.search.client.opensearch1" point="hint">
+    <hint name="imagehash_distance" class="nuxeo.labs.images.dup.opensearch1.HashDistanceHintQueryBuilder" />
+  </extension>
+</#if>
+<#if opensearch2>
+  <!-- OpenSearch 2.x -->
+  <extension target="org.nuxeo.ecm.core.search.client.opensearch2" point="hint">
+    <hint name="imagehash_distance" class="nuxeo.labs.images.dup.opensearch2.HashDistanceHintQueryBuilder" />
+  </extension>
+</#if>
+<#if elasticsearch9>
+  <!-- Elasticsearch 9.x -->
+  <extension target="org.nuxeo.ecm.core.search.client.elasticsearch9" point="hint">
+    <hint name="imagehash_distance" class="nuxeo.labs.images.dup.elasticsearch9.HashDistanceHintQueryBuilder" />
+  </extension>
+</#if>
+<#if opensearch1 || opensearch2 || elasticsearch9>
+  <extension target="org.nuxeo.runtime.ConfigurationService" point="configuration">
+    <property name="nuxeo.labs.images.dup.search.distanceHint">true</property>
+  </extension>
+</#if>
+
+</component>
+</#escape>

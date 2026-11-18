@@ -25,9 +25,10 @@ import java.util.List;
  * The result of a similar images search.
  *
  * @param images the similar images, closest first
- * @param truncated {@code true} if the search reached the configured maximum number of candidates: some similar
- *            images may be missing. The candidates sharing an exact band with the searched hash are examined first,
- *            so the closest images are the last ones to be missed
+ * @param truncated {@code true} if the search reached the configured maximum number of candidates, or of matches
+ *            when the search engine computes the distance: some similar images may be missing. The documents sharing
+ *            an exact band with the searched hash are fetched first, so the closest images are the last ones to be
+ *            missed
  * @since 2025.1.0
  */
 public record SimilarImages(List<SimilarImage> images, boolean truncated) implements Serializable {

@@ -86,7 +86,8 @@ public class ImageHashConfigurationDescriptor implements Descriptor {
     public static final boolean DEFAULT_SEARCH_ORIENTATIONS = true;
 
     /**
-     * Maximum number of candidates examined by a search.
+     * Maximum number of documents fetched by a search query: the candidates sharing a band key with the image, or only
+     * the matches when the search engine computes the distance.
      *
      * @since 2025.1.0
      */

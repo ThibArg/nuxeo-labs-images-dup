@@ -92,6 +92,12 @@
       <artifactId>log4j-api</artifactId>
       <scope>provided</scope>
     </dependency>
+    <!-- Only for the distance hint of this search client, registered by the Marketplace template when it is installed -->
+    <dependency>
+      <groupId>org.nuxeo.ecm.core</groupId>
+      <artifactId>nuxeo-search-client-opensearch1</artifactId>
+      <scope>provided</scope>
+    </dependency>
 
     <!-- Tests -->
     <dependency>
@@ -132,10 +138,100 @@
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
+    <!-- Needed by the embedded node to load the Painless module, see the build section -->
+    <dependency>
+      <groupId>org.opensearch</groupId>
+      <artifactId>opensearch-plugin-classloader</artifactId>
+      <version>${opensearch1.version}</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <testResources>
+      <!-- The version of the Painless module must be the one of the embedded node -->
+      <testResource>
+        <directory>src/test/resources</directory>
+        <filtering>true</filtering>
+        <includes>
+          <include>opensearch-home/**/*.properties</include>
+        </includes>
+      </testResource>
+      <testResource>
+        <directory>src/test/resources</directory>
+        <excludes>
+          <exclude>opensearch-home/**/*.properties</exclude>
+        </excludes>
+      </testResource>
+    </testResources>
+    <plugins>
+      <!--
+        The distance hint runs a Painless script, and the embedded OpenSearch node of the tests loads no module: the
+        tests give it a home holding the lang-painless module (see test-opensearch-painless-contrib.xml). Copied, not
+        declared as dependencies, so that its classes stay off the test classpath, as in a real distribution. ASM is
+        left out, it is already on the test classpath.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>opensearch-painless-module</id>
+            <phase>process-test-resources</phase>
+            <goals>
+              <goal>copy</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.build.testOutputDirectory}/opensearch-home/modules/lang-painless</outputDirectory>
+              <artifactItems>
+                <artifactItem>
+                  <groupId>org.opensearch.plugin</groupId>
+                  <artifactId>lang-painless</artifactId>
+                  <version>${opensearch1.version}</version>
+                </artifactItem>
+                <artifactItem>
+                  <groupId>org.opensearch.plugin</groupId>
+                  <artifactId>opensearch-scripting-painless-spi</artifactId>
+                  <version>${opensearch1.version}</version>
+                </artifactItem>
+                <artifactItem>
+                  <groupId>org.antlr</groupId>
+                  <artifactId>antlr4-runtime</artifactId>
+                  <version>4.5.3</version>
+                </artifactItem>
+              </artifactItems>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <systemPropertyVariables>
+            <nuxeo.labs.images.dup.test.opensearch.home>${project.build.testOutputDirectory}/opensearch-home</nuxeo.labs.images.dup.test.opensearch.home>
+          </systemPropertyVariables>
+          <!--
+            Loading a module, the embedded node checks the whole classpath for duplicated classes ("jar hell"), and
+            the Nuxeo test classpath has four pairs of jars sharing classes. One jar of each pair is left out, chosen
+            so that the classes actually loaded do not change: the later one on the classpath, whose classes are all
+            in the first one (mail, aopalliance) or never reached (com.sun.activation.registries, only used by the
+            activation API it duplicates), and for java_cup the parser generator, whose runtime classes are also
+            bundled in xalan.
+          -->
+          <classpathDependencyExcludes>
+            <classpathDependencyExclude>jakarta.mail:jakarta.mail-api</classpathDependencyExclude>
+            <classpathDependencyExclude>com.sun.activation:jakarta.activation</classpathDependencyExclude>
+            <classpathDependencyExclude>aopalliance:aopalliance</classpathDependencyExclude>
+            <classpathDependencyExclude>cup:java-cup</classpathDependencyExclude>
+          </classpathDependencyExcludes>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

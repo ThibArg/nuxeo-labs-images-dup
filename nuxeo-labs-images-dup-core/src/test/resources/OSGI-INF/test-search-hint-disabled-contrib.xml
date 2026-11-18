@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.test.search.hint.disabled">
+
+  <require>nuxeo.labs.images.dup.test.search.hint</require>
+
+  <!-- The search as without a search client the hint is registered for: the band query alone -->
+  <extension target="org.nuxeo.runtime.ConfigurationService" point="configuration">
+    <property name="nuxeo.labs.images.dup.search.distanceHint">false</property>
+  </extension>
+
+</component>

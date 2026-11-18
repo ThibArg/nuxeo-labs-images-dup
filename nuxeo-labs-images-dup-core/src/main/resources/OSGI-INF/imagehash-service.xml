@@ -43,7 +43,8 @@
                Also the most a user who is not an administrator can ask for -->
           <searchRadius>1</searchRadius>
           <searchOrientations>true</searchOrientations>
-          <!-- Max candidates fetched per search (must not exceed the search index max result window) -->
+          <!-- Max documents fetched per search query (must not exceed the search index max result window):
+               the matches when the search engine computes the distance, otherwise the candidates -->
           <maxCandidates>10000</maxCandidates>
         </configuration>
       </code>

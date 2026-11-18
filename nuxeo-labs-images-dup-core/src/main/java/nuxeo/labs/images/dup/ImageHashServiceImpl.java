@@ -62,6 +62,7 @@ import org.nuxeo.ecm.core.search.SearchService;
 import org.nuxeo.ecm.platform.dublincore.listener.DublinCoreListener;
 import org.nuxeo.ecm.platform.picture.api.adapters.MultiviewPicture;
 import org.nuxeo.runtime.api.Framework;
+import org.nuxeo.runtime.services.config.ConfigurationService;
 import org.nuxeo.runtime.model.ComponentContext;
 import org.nuxeo.runtime.model.DefaultComponent;
 
@@ -117,6 +118,9 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
 
     /** Logged only once, the listener would otherwise report it for every picture. */
     protected volatile boolean missingSearchEngineLogged;
+
+    /** Logged only once, like {@link #missingSearchEngineLogged}. */
+    protected volatile boolean noDistanceHintLogged;
 
     /**
      * @param orientations the hashes of the 8 orientations of the image, the first one being {@code hash};
@@ -428,9 +432,14 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
             SearchIndex index, boolean orientations, int radius, int threshold) {
         var hashes = orientations ? computed.orientations() : new long[] { computed.hash() };
         var maxCandidates = config.getMaxCandidates();
+        // When the search engine computes the distance, a query fetches the documents within the threshold, otherwise
+        // every candidate sharing a band key; maxCandidates caps either
+        var distanceHint = isDistanceHintEnabled(maxCandidates);
+        var fetched = new Fetched(hashes, threshold, distanceHint);
         // candidate document id to hash; in the usual case a single query fetches them all
         var candidates = new LinkedHashMap<String, String>();
-        var truncated = !fetchCandidates(doc, principal, index, queryKeys(hashes, radius), maxCandidates, candidates);
+        var truncated = !fetchCandidates(doc, principal, index, fetched, queryKeys(hashes, radius), maxCandidates,
+                candidates);
         if (truncated && radius > 0) {
             // That query has no order: the candidates it returned are an arbitrary subset. Ask again from the exact
             // bands outwards, each radius with what is left of the budget, so that the candidates dropped are those
@@ -441,14 +450,18 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
             for (var r = 0; r <= radius && !truncated; r++) {
                 var keys = queryKeys(hashes, r);
                 keys.removeAll(queried);
+                if (keys.isEmpty()) {
+                    continue;
+                }
                 var remaining = maxCandidates - candidates.size();
-                truncated = remaining <= 0 || !fetchCandidates(doc, principal, index, keys, remaining, candidates);
+                truncated = remaining <= 0
+                        || !fetchCandidates(doc, principal, index, fetched, keys, remaining, candidates);
                 queried.addAll(keys);
             }
         }
         if (truncated) {
-            log.warn("Document: {} reached the max number of candidates: {}, some duplicates may be missed",
-                    doc.getId(), maxCandidates);
+            log.warn("Document: {} reached the max number of {}: {}, some duplicates may be missed", doc.getId(),
+                    distanceHint ? "matches" : "candidates", maxCandidates);
         }
 
         var similar = new ArrayList<SimilarImage>();
@@ -463,6 +476,31 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
         return new SimilarImages(List.copyOf(similar), truncated);
     }
 
+    /**
+     * What a candidate query asks for.
+     *
+     * @param distanceHint {@code true} if the search engine keeps only the documents within the threshold of one of
+     *            the hashes, see {@link HashDistanceHint}
+     */
+    protected record Fetched(long[] hashes, int threshold, boolean distanceHint) {
+    }
+
+    /**
+     * Returns {@code true} if the search engine computes the distance, see {@link HashDistanceHint#ENABLED_PROPERTY}.
+     */
+    protected boolean isDistanceHintEnabled(int maxCandidates) {
+        if (Framework.getService(ConfigurationService.class).isBooleanTrue(HashDistanceHint.ENABLED_PROPERTY)) {
+            return true;
+        }
+        if (!noDistanceHintLogged) {
+            noDistanceHintLogged = true;
+            log.warn("The search engine does not compute the image distance (property: {} is not true): every search"
+                    + " fetches the candidates sharing a band with the image, at most: {}, and is incomplete beyond",
+                    HashDistanceHint.ENABLED_PROPERTY, maxCandidates);
+        }
+        return false;
+    }
+
     protected Set<String> queryKeys(long[] hashes, int radius) {
         var keys = new LinkedHashSet<String>();
         for (var hash : hashes) {
@@ -472,17 +510,20 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
     }
 
     /**
-     * Adds to the candidates the documents holding one of the band keys, at most {@code limit} of them.
+     * Adds to the candidates the documents holding one of the band keys, and within the threshold when the search
+     * engine computes the distance, at most {@code limit} of them.
      *
      * @return {@code false} if the limit was reached, in which case some candidates may not have been fetched
      */
-    protected boolean fetchCandidates(DocumentModel doc, NuxeoPrincipal principal, SearchIndex index, Set<String> keys,
-            int limit, Map<String, String> candidates) {
+    protected boolean fetchCandidates(DocumentModel doc, NuxeoPrincipal principal, SearchIndex index,
+            Fetched fetched, Set<String> keys, int limit, Map<String, String> candidates) {
+        var bands = fetched.distanceHint()
+                ? HashDistanceHint.clause(BANDS_PROPERTY, fetched.threshold(), fetched.hashes(), keys)
+                : "%s IN (%s)".formatted(BANDS_PROPERTY, keys.stream().map(NXQL::escapeString).collect(joining(",")));
         var nxql = """
-                SELECT %s, %s FROM Document WHERE %s IN (%s) AND %s <> %s
+                SELECT %s, %s FROM Document WHERE %s AND %s <> %s
                 AND ecm:isProxy = 0 AND ecm:isVersion = 0 AND ecm:isTrashed = 0
-                """.formatted(ECM_UUID, PHASH_PROPERTY, BANDS_PROPERTY,
-                keys.stream().map(NXQL::escapeString).collect(joining(",")), ECM_UUID, NXQL.escapeString(doc.getId()));
+                """.formatted(ECM_UUID, PHASH_PROPERTY, bands, ECM_UUID, NXQL.escapeString(doc.getId()));
         var query = SearchQuery.builder(nxql, principal).searchIndex(index).limit(limit).build();
         var response = Framework.getService(SearchService.class).search(query);
         for (var hit : response.getHitsAsMap()) {

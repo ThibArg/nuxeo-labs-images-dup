@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.test.opensearch.painless">
+
+  <!-- Must replace the embedded server of the OpenSearch test feature -->
+  <require>org.nuxeo.runtime.opensearch1.embed.test.contrib</require>
+
+  <!--
+    The embedded test node loads no module, so it has no Painless, which the distance hint needs. Its home is
+    moved to a directory holding the lang-painless module, prepared by the build: the node loads the modules
+    of its home. Same server as the test feature's, which this replaces.
+  -->
+  <extension target="org.nuxeo.runtime.opensearch1.embed.OpenSearchEmbedComponent" point="server">
+    <server name="nuxeoTestClusterLocal">
+      <nodeName>nuxeoTestNode</nodeName>
+      <homePath>${nuxeo.labs.images.dup.test.opensearch.home}</homePath>
+    </server>
+  </extension>
+
+</component>

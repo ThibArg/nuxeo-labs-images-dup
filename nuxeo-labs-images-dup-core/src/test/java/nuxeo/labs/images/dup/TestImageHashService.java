@@ -59,6 +59,7 @@ import javax.imageio.ImageIO;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -120,6 +121,10 @@ import nuxeo.labs.images.dup.pageprovider.SimilarImagesPageProvider;
 @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-opensearch-mapping-contrib.xml")
 @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-capture-listener-contrib.xml")
 @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-failing-save-listener-contrib.xml")
+// the search engine computes the distance, as on a stack the Marketplace template registers the hint for, which needs
+// the Painless module the embedded node does not load by itself
+@Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-search-hint-contrib.xml")
+@Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-opensearch-painless-contrib.xml")
 public class TestImageHashService {
 
     protected static final NuxeoPrincipal JOHN = new UserPrincipal("john", List.of(), false, false);
@@ -699,14 +704,15 @@ public class TestImageHashService {
     }
 
     /**
-     * More candidates than {@code maxCandidates}: the cap must drop the least likely candidates, not arbitrary ones,
-     * and every entry point must say that the result may be incomplete.
+     * Without the distance hint, more candidates than {@code maxCandidates}: the cap must drop the least likely
+     * candidates, not arbitrary ones, and every entry point must say that the result may be incomplete.
      * <p>
      * 16 decoys share no band with the reference, each has its first band 1 bit away and the three others inverted:
      * candidates at radius 1, at a distance of 49. They are indexed before the identical copy, the only real
      * duplicate, which an unsorted query cut at 5 hits therefore leaves out.
      */
     @Test
+    @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-search-hint-disabled-contrib.xml")
     @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-few-candidates-contrib.xml")
     @SuppressWarnings("unchecked")
     public void testCandidateCapKeepsTheClosestCandidatesAndIsReported() throws OperationException, IOException {
@@ -750,6 +756,70 @@ public class TestImageHashService {
         var json = MarshallerHelper.objectToJson(provider.getCurrentPage().getFirst(),
                 CtxBuilder.enrichDoc(SimilarImageJsonEnricher.NAME).get());
         assertTrue(json, json.contains("\"imageSimilarity\":{\"distance\":0,\"truncated\":true}"));
+    }
+
+    /**
+     * With the distance hint, the search engine returns the documents within the threshold only: candidates sharing a
+     * band but too far away count neither in the result nor against {@code maxCandidates}.
+     * <p>
+     * The decoys are those of {@link #testCandidateCapKeepsTheClosestCandidatesAndIsReported()}, which truncate the
+     * search without the hint. Next to the identical copy, two near copies keep the first band of the reference and
+     * differ elsewhere, by 7 and 9 bits: one within the default threshold of 8, one beyond.
+     */
+    @Test
+    @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-few-candidates-contrib.xml")
+    public void testDistanceHintReturnsOnlyTheMatches() {
+        var reference = createPicture("/", "reference", original);
+        viewsGenerated(reference);
+        var hash = PHash.fromHex((String) session.getDocument(reference.getRef()).getPropertyValue(PHASH_PROPERTY));
+        for (var bit = 0; bit < 16; bit++) {
+            createHashed("decoy" + bit, ~hash ^ 0xFFFFL << 48 ^ 1L << (48 + bit));
+        }
+        var close = createHashed("close", hash ^ 0b111_1111L);
+        createHashed("far", hash ^ 0b1_1111_1111L);
+        var copy = createHashed("copy", hash);
+        txFeature.nextTransaction();
+
+        var similar = service.findSimilar(reference, session.getPrincipal(), null, 1, Boolean.FALSE);
+        assertEquals(List.of(new SimilarImage(copy.getId(), 0), new SimilarImage(close.getId(), 7)), similar.images());
+        assertFalse("the decoys are not matches, they must not reach the cap", similar.truncated());
+        // the threshold is applied by the search engine
+        assertEquals(Set.of(copy.getId()), ids(service.findSimilar(reference, session.getPrincipal(), 6, 1,
+                Boolean.FALSE)));
+    }
+
+    /** With the distance hint, {@code maxCandidates} caps the matches, and reaching it is reported. */
+    @Test
+    @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-few-candidates-contrib.xml")
+    public void testDistanceHintMatchesAreCapped() {
+        var reference = createPicture("/", "reference", original);
+        viewsGenerated(reference);
+        var hash = PHash.fromHex((String) session.getDocument(reference.getRef()).getPropertyValue(PHASH_PROPERTY));
+        for (var i = 0; i < 6; i++) {
+            createHashed("copy" + i, hash);
+        }
+        txFeature.nextTransaction();
+
+        var similar = service.findSimilar(reference, session.getPrincipal(), null, 1, Boolean.FALSE);
+        assertEquals(5, similar.images().size());
+        assertTrue(similar.truncated());
+    }
+
+    /** The hint can be written in any NXQL query: its values must not reach the search engine unchecked. */
+    @Test
+    public void testDistanceHintValuesAreValidated() {
+        var injected = "/*+ES: OPERATOR(%s) */ %s IN ('threshold:8', 'hash:0123456789abcdef', 'x\"}}')".formatted(
+                HashDistanceHint.OPERATOR, BANDS_PROPERTY);
+        var otherField = "/*+ES: OPERATOR(%s) */ dc:title IN ('threshold:8', 'hash:0123456789abcdef', '%s')".formatted(
+                HashDistanceHint.OPERATOR, HashBands.bands("5b010d06", 0L).getFirst());
+        for (var clause : List.of(injected, otherField)) {
+            var query = SearchQuery.builder("SELECT * FROM Document WHERE " + clause, session.getPrincipal())
+                                   .index(searchService.getDefaultIndexName(session.getRepositoryName()))
+                                   .limit(10)
+                                   .build();
+            var e = assertThrows(RuntimeException.class, () -> searchService.search(query));
+            assertTrue(e.toString(), ExceptionUtils.getStackTrace(e).contains(HashDistanceHint.OPERATOR));
+        }
     }
 
     /**

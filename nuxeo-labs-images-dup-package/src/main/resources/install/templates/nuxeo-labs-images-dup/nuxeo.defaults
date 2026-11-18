@@ -5,3 +5,7 @@ nuxeo-labs-images-dup.target=.
 ## Set to false to disable, and set the repository name if yours is not "default".
 nuxeo.labs.images.dup.fulltext.exclude=true
 nuxeo.labs.images.dup.fulltext.repository=default
+
+## Let the search engine compute the distance between image hashes (OpenSearch 1 and 2, Elasticsearch 7 to 9).
+## Set to false to search with the band query alone, capped at maxCandidates candidates.
+nuxeo.labs.images.dup.search.hint=true

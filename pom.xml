@@ -18,10 +18,15 @@
     <!-- Skip Nuxeo enforcer rules by default -->
     <nuxeo.skip.enforcer>true</nuxeo.skip.enforcer>
     <nuxeo.target.version>2025.*</nuxeo.target.version>
+    <!-- Search clients the distance hint is compiled against: separate packages, not managed by nuxeo-parent -->
+    <nuxeo.search.client.opensearch2.version>2025.6.24</nuxeo.search.client.opensearch2.version>
+    <nuxeo.search.client.elasticsearch9.version>2025.5.1</nuxeo.search.client.elasticsearch9.version>
   </properties>
 
   <modules>
     <module>nuxeo-labs-images-dup-core</module>
+    <module>nuxeo-labs-images-dup-opensearch2</module>
+    <module>nuxeo-labs-images-dup-elasticsearch9</module>
     <module>nuxeo-labs-images-dup-package</module>
   </modules>
 
@@ -42,8 +47,28 @@
       </dependency>
       <dependency>
         <groupId>nuxeo.labs.images.dup</groupId>
+        <artifactId>nuxeo-labs-images-dup-opensearch2</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>nuxeo.labs.images.dup</groupId>
+        <artifactId>nuxeo-labs-images-dup-elasticsearch9</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>nuxeo.labs.images.dup</groupId>
         <artifactId>nuxeo-labs-images-dup-package</artifactId>
         <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.nuxeo.opensearch2</groupId>
+        <artifactId>nuxeo-search-client-opensearch2</artifactId>
+        <version>${nuxeo.search.client.opensearch2.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.nuxeo.elasticsearch9</groupId>
+        <artifactId>nuxeo-search-client-elasticsearch9</artifactId>
+        <version>${nuxeo.search.client.elasticsearch9.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

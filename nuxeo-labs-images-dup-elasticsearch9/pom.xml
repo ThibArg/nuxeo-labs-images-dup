@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>nuxeo.labs.images.dup</groupId>
+    <artifactId>nuxeo-labs-images-dup-parent</artifactId>
+    <version>2025.2.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>nuxeo-labs-images-dup-elasticsearch9</artifactId>
+  <name>Nuxeo Labs Images Duplicates - Elasticsearch9</name>
+  <description>Distance hint for the Elasticsearch9 search client, registered by the Marketplace template when that client is installed</description>
+
+  <!--
+    A module of its own so that this search client never reaches the classpath of the core module, whose tests run an
+    embedded OpenSearch 1 node.
+  -->
+  <dependencies>
+    <dependency>
+      <groupId>nuxeo.labs.images.dup</groupId>
+      <artifactId>nuxeo-labs-images-dup-core</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.nuxeo.elasticsearch9</groupId>
+      <artifactId>nuxeo-search-client-elasticsearch9</artifactId>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+</project>

@@ -179,7 +179,8 @@ public interface ImageHashService {
      * The configured search radius and orientations are also the most a principal who is not an administrator may
      * ask for: both multiply the cost of the search.
      * <p>
-     * The search examines at most the configured number of candidates. Beyond it the result is
+     * The search fetches at most the configured number of candidates, which are the matches when the search engine
+     * computes the distance (see {@link HashDistanceHint}). Beyond it the result is
      * {@link SimilarImages#truncated() truncated}: callers must not present it as complete.
      *
      * @param threshold max Hamming distance, from 0 to 64
