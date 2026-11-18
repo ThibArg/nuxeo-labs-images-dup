@@ -26,7 +26,7 @@ To search for similar images, call the `ImageHash.FindSimilar` Automation operat
 |-----------|-------------|------------|
 | `threshold` | Maximum Hamming distance, from 0 to 64. | `<threshold>`, default `8` |
 | `radius` | Search radius, from 0 to 2. Higher values find more candidates but cost more. | `<searchRadius>`, default `1` |
-| `orientations` | Also compare rotated and mirrored images. | `<searchOrientations>`, default `true` |
+| `orientations` | Also compare images rotated by 90, 180 or 270 degrees, and mirrored images. No other angle, see [Orientations](how-it-works.md#orientations). | `<searchOrientations>`, default `true` |
 | `maxResults` | Maximum returned documents, at least 1. | `50`, not configurable |
 
 The first three fall back to the [configuration](../README.md#configuration)

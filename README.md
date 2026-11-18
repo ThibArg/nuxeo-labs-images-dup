@@ -76,7 +76,7 @@ Call the `ImageHash.FindSimilar` operation with a Picture document as input. All
 |---|---|---|
 | `threshold` | Maximum distance between two hashes, 0 to 64. Lower is stricter. | `8` |
 | `radius` | How wide the search looks, 0 to 2. Higher finds more and costs more. | `1` |
-| `orientations` | Also find rotated and mirrored copies. | `true` |
+| `orientations` | Also find copies rotated by 90, 180 or 270 degrees, and mirrored copies. No other angle. | `true` |
 | `maxResults` | Maximum number of documents returned. | `50` |
 
 #### **Existing pictures**
@@ -144,6 +144,7 @@ Three settings live in `nuxeo.conf`, because the template installed by the packa
 
 - **Copies uploaded together do not see each other.** The automatic detection misses two copies imported at the same time. Run `detectImageDuplicates` after an import. [More](docs/how-it-works.md#automatic-detection)
 - **A rotated copy is only found with `orientations`**, and phone photos are often rotated copies without anyone knowing. The automatic detection does not compare orientations by default. [More](docs/how-it-works.md#orientations)
+- **Only quarter turns and mirrors are found.** A copy rotated by any other angle is past the default `threshold` after 1 or 2 degrees, and as far from the original as an unrelated image a few degrees further. [More](docs/how-it-works.md#orientations)
 - **`threshold` and `radius` go together.** Raising `threshold` alone does not find more. [More](docs/how-it-works.md#distance-radius-and-threshold)
 - **A result can be incomplete on a very large repository, and it is always reported**: a warning in the tab, a flag on the operation, the event and the REST response. [More](docs/scaling.md#candidate-limit)
 - **Users who are not administrators cannot search wider than the configuration**: a larger radius is refused. [More](docs/how-it-works.md#what-a-search-costs)
