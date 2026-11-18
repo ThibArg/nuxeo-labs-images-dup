@@ -11,6 +11,10 @@ Nuxeo LTS 2025 plugin. Detects near-duplicate images on `Picture`-faceted docume
 - Everything written (README, this file, code comments, Javadoc, commit messages, UI labels) is in
   **English**. The one exception is the French Web UI translation, `messages-fr.json`.
 - `AGENTS.md` is deliberately **not** in `.gitignore` here, it is committed.
+- **`README.md` is the overview, the details live in `docs/`** (`how-it-works.md`, `api.md`,
+  `search-backend.md`, `scaling.md`). Keep the README short: a new detail goes to the `docs/` page it
+  belongs to, with at most one line and a link in the README. One home per concept, the other places link
+  to it. After renaming a heading, check the links pointing to its anchor in the five files.
 - Javadoc tag is `@since 2025.1.0` on the API of the first release and `@since 2025.2.0` on what was added
   since (the distance hint), never `@since 2025.XX`.
 - No CI, no linter, no formatter config. Java 21, Maven 3.8. `.github/modernize/` is a self-ignored
@@ -148,7 +152,7 @@ setting. So the fix lets the engine filter on the distance.
 - **Fallback**: `ImageHashServiceImpl.isDistanceHintEnabled` reads that property. Without it, the search is
   the band query alone with the tiered re-query, and a WARN is logged once. A stack without the hint
   (MongoDB Atlas) therefore never sends an unknown operator. A cluster with scripting disabled fails every
-  search: the README tells to set the property to false.
+  search: `docs/search-backend.md` tells to set the property to false.
 - With the hint, `maxCandidates` caps the **matches**; the tiered re-query and every truncation flag still
   apply, the WARN says "matches" instead of "candidates".
 - **Verified on OpenSearch 2.19 (manual, 10M synthetic + 220 real references)**: the 10 planted near
@@ -179,10 +183,10 @@ which would overwrite the database template's own output.
 
 **Each fix is duplicated, keep the copies in sync.** The templates are not loaded by tests, so tests run
 hand-written counterparts: `src/test/resources/OSGI-INF/test-opensearch-mapping-contrib.xml` (index
-`nxutest`) and `test-fulltext-exclude-contrib.xml` (repository `test`). The README also reproduces the
+`nxutest`) and `test-fulltext-exclude-contrib.xml` (repository `test`). `docs/search-backend.md` also reproduces the
 fulltext XML. A change to a template that is not mirrored there is untested. Adding a string property to
 the `imagehash` schema means touching all of them: the mapping macro, both fulltext branches, the
-two test contributions and the README. `TestFulltextExclusion` pins the exact set of excluded `imgh:*`
+two test contributions and `docs/search-backend.md`. `TestFulltextExclusion` pins the exact set of excluded `imgh:*`
 paths.
 
 ### Engine mapping (`imagehash-search-mapping-config.xml.nxftl`)
@@ -237,7 +241,8 @@ paths.
   artifacts and, for elasticsearch9, a Docker container — unacceptable for a repository meant to be
   public. One part of the original argument does not hold, though: `mvn clean install` **already**
   depends on `packages.nuxeo.com/maven-private`, see "Commands". A `RunnerFeature` cannot soften this:
-  Maven resolves dependencies before any test code runs. The README states the support level instead.
+  Maven resolves dependencies before any test code runs. The README and `docs/search-backend.md`
+  state the support level instead.
 
 ### Repository fulltext (`imagehash-fulltext-exclude-config.xml.nxftl`)
 
