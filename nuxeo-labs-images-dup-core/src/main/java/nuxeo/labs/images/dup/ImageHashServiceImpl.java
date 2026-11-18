@@ -350,6 +350,9 @@ public class ImageHashServiceImpl extends DefaultComponent implements ImageHashS
                 log.warn("Cannot read view: {} of document: {}", title, doc.getId(), e);
             }
         }
+        // a picture with none of the configured views is never hashed, which nothing else would tell
+        log.warn("None of the configured picture views: {} can be read for document: {}, it is not hashed",
+                config.getViews(), doc.getId());
         return null;
     }
 

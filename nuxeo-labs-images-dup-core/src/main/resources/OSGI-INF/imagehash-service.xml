@@ -16,8 +16,11 @@
       Every element is optional, contributions are merged. Default values:
       <code>
         <configuration>
-          <!-- First available picture view is hashed. Changing this list does not invalidate the
-               existing hashes: a hash does not depend on the view it is computed from -->
+          <!-- The first readable view of the list is hashed, looked up by name. A contribution replaces
+               the whole list, and a picture with none of the listed views is not hashed. Keep first a view
+               of 256 to 512 pixels on its smaller side, such as Small: larger ones only cost decoding time.
+               Changing this list does not invalidate the existing hashes, but the same image hashed from
+               views of different sizes gets hashes a few bits apart -->
           <views>
             <view>Small</view>
             <view>Medium</view>

@@ -752,6 +752,21 @@ public class TestImageHashService {
         assertTrue(json, json.contains("\"imageSimilarity\":{\"distance\":0,\"truncated\":true}"));
     }
 
+    /**
+     * Only the configured views are read, and a contribution replaces the default list: with a view of its own as the
+     * only one configured, a picture having only the default first view is not hashed.
+     */
+    @Test
+    @Deploy("nuxeo.labs.images.dup.nuxeo-labs-images-dup-core:OSGI-INF/test-custom-view-contrib.xml")
+    public void testOnlyTheConfiguredViewsAreHashed() {
+        var custom = createPicture("/", "custom", jpegView("Custom1080", "custom", original));
+        var small = createPicture("/", "small", original);
+        viewsGenerated(custom, small);
+
+        assertTrue(session.getDocument(custom.getRef()).hasFacet(IMAGE_HASH_FACET));
+        assertFalse(session.getDocument(small.getRef()).hasFacet(IMAGE_HASH_FACET));
+    }
+
     /** A document carrying the given hash, as the service stores it, without any picture. */
     protected DocumentModel createHashed(String name, long hash) {
         var doc = session.createDocumentModel("/", name, "File");

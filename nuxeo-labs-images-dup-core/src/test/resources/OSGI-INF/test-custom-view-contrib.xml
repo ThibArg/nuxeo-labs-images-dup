@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<component name="nuxeo.labs.images.dup.test.custom.view">
+
+  <require>nuxeo.labs.images.dup.ImageHashService</require>
+
+  <!-- A deployment generating its own view only: the list replaces the default one -->
+  <extension target="nuxeo.labs.images.dup.ImageHashService" point="configuration">
+    <configuration>
+      <views>
+        <view>Custom1080</view>
+      </views>
+    </configuration>
+  </extension>
+
+</component>
