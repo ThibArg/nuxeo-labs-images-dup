@@ -235,6 +235,20 @@ Beyond the limit, whether it counts candidates or matches, the result is **trunc
 
 Without the hint, a truncated search took about 500 ms through Nuxeo on the same server, and missed real duplicates: at 5 million pictures, the default tab search lost copies at distances 5 to 7 that the search with the hint returned. To get complete results on a large repository without the hint, lower `radius` or turn `orientations` off, which divides the number of keys by 8. Raising `maxCandidates` is only possible up to the index `max_result_window`.
 
+### What About Hundreds of Millions of Pictures?
+
+The duplicate search was load tested up to 10 million pictures. The search index was filled directly with 10 million documents shaped like hashed pictures, without storing 10 million images: evaluating the search only needs the hashes in the index, not the images. The searches ran through Nuxeo, from real Picture documents, on a single OpenSearch 2.19 node with one shard and 4 GB of heap, in Docker on a MacBook. With the distance hint, the default searches answered in under 100 ms, the most expensive setting (radius 2 with orientations) in about half a second, and every planted near duplicate was found. See [Candidate Limit](#candidate-limit) for the figures.
+
+We are therefore confident the plugin handles a few tens of millions of pictures. The hashes of that test were random, which spreads them evenly: real photos look more alike and give each search more work, so validate with your own pictures.
+
+Beyond that, it is mostly a matter of infrastructure. Nothing in the plugin has a limit in that range, and the search engine splits each search across the shards of the index, so a cluster with more nodes and shards keeps the response time down. The work of each search still grows with the number of pictures, though, so at hundreds of millions:
+
+- prefer cheaper defaults for the tab and the operation, such as `searchOrientations` set to `false`;
+- run `detectImageDuplicates` on what was just imported, not on the whole repository: it costs one search per picture;
+- consider a lower `threshold`: the more pictures, the more unrelated pairs fall within a given distance by chance.
+
+All of this requires the distance hint (see [Search Backend](#search-backend)): without it, the default tab search is truncated from about 1.2 million pictures.
+
 ### Keeping the Hash Properties Out of Fulltext
 
 The plugin stores four technical properties on each picture: the band keys in `imgh:bands`, opaque strings such as `f2eabf4f:0:cb94`, the hash in `imgh:phash`, the hashes of its 8 orientations in `imgh:orientations`, and `imgh:signature`, the version of the hash algorithm, for example `phash64v2`. None of them is content. Left in fulltext, every hashed picture matches a search for its signature, and early versions of this plugin, whose signature ended with the name of the hashed view, made a search for "small" return all of them. Two different fulltext indexes can pick them up, and they are independent of each other.
