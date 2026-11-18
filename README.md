@@ -182,6 +182,8 @@ Similar images are found by querying the `imgh:bands` property through the Searc
 
 On these three stacks, the search engine also computes the distance between the hashes, through an NXQL hint the Marketplace template registers for the installed search client, see [Candidate Limit](#candidate-limit). The hint runs a Painless script: Painless is part of every OpenSearch and Elasticsearch distribution, but a cluster that disables scripting cannot serve it, and every duplicate search then fails. Set `nuxeo.labs.images.dup.search.hint=false` in `nuxeo.conf` on such a cluster.
 
+The package installs three jars on every server: `nuxeo-labs-images-dup-core`, `nuxeo-labs-images-dup-opensearch2` and `nuxeo-labs-images-dup-elasticsearch9`. The last two only hold the hint for their search client, and are not loaded when that client is not the one installed: they do nothing and cause no error.
+
 > [!IMPORTANT]
 > Only OpenSearch 1.x, and therefore Elasticsearch 7.x–8.x which uses the same client, is exercised by the test suite. It runs against an embedded OpenSearch node, given the Painless module for the distance hint.
 >
